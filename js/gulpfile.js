@@ -24,7 +24,7 @@ var wellKnownTypes = [
 ];
 
 gulp.task('genproto_closure', function (cb) {
-  exec(protoc + ' --js_out=library=testproto_libs,binary:.  -I ../src -I . *.proto ../src/google/protobuf/descriptor.proto',
+  exec(protoc + ' --js_out=library=testproto_libs:. --jsbinary_out=library=testproto_binary_libs:. -I ../src -I . *.proto ../src/google/protobuf/descriptor.proto',
        function (err, stdout, stderr) {
     console.log(stdout);
     console.log(stderr);
@@ -33,7 +33,7 @@ gulp.task('genproto_closure', function (cb) {
 });
 
 gulp.task('genproto_commonjs', function (cb) {
-  exec('mkdir -p commonjs_out && ' + protoc + ' --js_out=import_style=commonjs,binary:commonjs_out -I ../src -I commonjs -I . *.proto commonjs/test*/*.proto ../src/google/protobuf/descriptor.proto',
+  exec('mkdir -p commonjs_out && ' + protoc + ' --js_out=import_style=commonjs:commonjs_out --jsbinary_out=import_style=commonjs:commonjs_out -I ../src -I commonjs -I . *.proto commonjs/test*/*.proto ../src/google/protobuf/descriptor.proto',
        function (err, stdout, stderr) {
     console.log(stdout);
     console.log(stderr);
@@ -42,7 +42,7 @@ gulp.task('genproto_commonjs', function (cb) {
 });
 
 gulp.task('genproto_commonjs_wellknowntypes', function (cb) {
-  exec('mkdir -p commonjs_out/node_modules/google-protobuf && ' + protoc + ' --js_out=import_style=commonjs,binary:commonjs_out/node_modules/google-protobuf -I ../src ../src/google/protobuf/descriptor.proto',
+  exec('mkdir -p commonjs_out/node_modules/google-protobuf && ' + protoc + ' --js_out=import_style=commonjs:commonjs_out/node_modules/google-protobuf --jsbinary_out=import_style=commonjs:commonjs_out/node_modules/google-protobuf -I ../src ../src/google/protobuf/descriptor.proto',
        function (err, stdout, stderr) {
     console.log(stdout);
     console.log(stderr);
@@ -51,7 +51,7 @@ gulp.task('genproto_commonjs_wellknowntypes', function (cb) {
 });
 
 gulp.task('genproto_wellknowntypes', function (cb) {
-  exec(protoc + ' --js_out=import_style=commonjs,binary:. -I ../src ' + wellKnownTypes.join(' '),
+  exec(protoc + ' --js_out=import_style=commonjs:. --jsbinary_out=import_style=commonjs:. -I ../src ' + wellKnownTypes.join(' '),
        function (err, stdout, stderr) {
     console.log(stdout);
     console.log(stderr);

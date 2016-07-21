@@ -423,8 +423,9 @@ describe('protoBinaryTest', function() {
   it('testRoundTrip', function() {
     var msg = new proto.jspb.test.TestAllTypes();
     fillAllFields(msg);
-    var encoded = msg.serializeBinary();
-    var decoded = proto.jspb.test.TestAllTypes.deserializeBinary(encoded);
+    var encoded = proto.binary.jspb.test.Proto3.serializeBinary(msg);
+    var decoded =
+        proto.binary.jspb.test.TestAllTypes.deserializeBinary(encoded);
     checkAllFields(msg, decoded);
   });
 
@@ -440,7 +441,8 @@ describe('protoBinaryTest', function() {
     assertTrue(bytesCompare(msg.getOptionalBytes(), BYTES));
 
     // Test binary serialize round trip doesn't break it.
-    msg = proto.jspb.test.TestAllTypes.deserializeBinary(msg.serializeBinary());
+    var serialized = proto.binary.jspb.test.Proto3.serializeBinary(msg);
+    msg = proto.binary.jspb.test.TestAllTypes.deserializeBinary(serialized);
     assertTrue(bytesCompare(msg.getOptionalBytes_asU8(), BYTES));
     assertTrue(bytesCompare(msg.getOptionalBytes_asB64(), BYTES));
     assertTrue(bytesCompare(msg.getOptionalBytes(), BYTES));
@@ -621,8 +623,8 @@ describe('protoBinaryTest', function() {
   it('testExtensions', function() {
     var msg = new proto.jspb.test.TestExtendable();
     fillExtensions(msg);
-    var encoded = msg.serializeBinary();
-    var decoded = proto.jspb.test.TestExtendable.deserializeBinary(encoded);
+    var encoded = proto.binary.jspb.test.Proto3.serializeBinary(msg);
+    var decoded = proto.binary.jspb.test.TestExtendable.deserializeBinary(encoded);
     checkExtensions(decoded);
   });
 });

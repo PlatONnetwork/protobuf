@@ -38,6 +38,9 @@ goog.require('proto.jspb.test.ForeignMessage');
 goog.require('proto.jspb.test.Proto3Enum');
 goog.require('proto.jspb.test.TestProto3');
 
+// CommonJS-LoadFromFile: proto3_test_binarypb proto.binary.jspb.test
+goog.require('proto.binary.jspb.test.TestProto3');
+
 
 var BYTES = new Uint8Array([1, 2, 8, 9]);
 var BYTES_B64 = goog.crypt.base64.encodeByteArray(BYTES);
@@ -168,8 +171,8 @@ describe('proto3Test', function() {
 
     msg.setOneofString('asdf');
 
-    var serialized = msg.serializeBinary();
-    msg = proto.jspb.test.TestProto3.deserializeBinary(serialized);
+    var serialized = proto.binary.jspb.test.Proto3.serializeBinary(msg);
+    msg = proto.binary.jspb.test.TestProto3.deserializeBinary(serialized);
 
     assertEquals(msg.getOptionalInt32(), -42);
     assertEquals(msg.getOptionalInt64(), -0x7fffffff00000000);
@@ -297,7 +300,7 @@ describe('proto3Test', function() {
     msg.setOneofUint32(null);
 
 
-    var serialized = msg.serializeBinary();
+    var serialized = proto.binary.jspb.test.Proto3.serializeBinary(msg);
     assertEquals(0, serialized.length);
   });
 
@@ -313,7 +316,8 @@ describe('proto3Test', function() {
     assertTrue(bytesCompare(msg.getOptionalBytes(), BYTES));
 
     // Test binary serialize round trip doesn't break it.
-    msg = proto.jspb.test.TestProto3.deserializeBinary(msg.serializeBinary());
+    var serialized = proto.binary.jspb.test.Proto3.serializeBinary(msg);
+    msg = proto.binary.jspb.test.TestProto3.deserializeBinary(serialized);
     assertTrue(bytesCompare(msg.getOptionalBytes_asU8(), BYTES));
     assertTrue(bytesCompare(msg.getOptionalBytes_asB64(), BYTES));
     assertTrue(bytesCompare(msg.getOptionalBytes(), BYTES));

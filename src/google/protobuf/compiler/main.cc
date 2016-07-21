@@ -90,9 +90,12 @@ int main(int argc, char* argv[]) {
                         "Generate Objective C header and source.");
 
   // JavaScript
-  google::protobuf::compiler::js::Generator js_generator;
+  google::protobuf::compiler::js::Generator js_generator(false);
   cli.RegisterGenerator("--js_out", &js_generator,
                         "Generate JavaScript source.");
+  google::protobuf::compiler::js::Generator js_binary_generator(true);
+  cli.RegisterGenerator("--jsbinary_out", &js_binary_generator,
+                        "Generate JavaScript binary parse/serialize source.");
 
   return cli.Run(argc, argv);
 }

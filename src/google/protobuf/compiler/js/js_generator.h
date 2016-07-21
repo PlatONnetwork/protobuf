@@ -65,8 +65,8 @@ struct GeneratorOptions {
   string library;
   // Error if there are two types that would generate the same output file?
   bool error_on_name_conflict;
-  // Enable binary-format support?
-  bool binary;
+  // Whether to use legacy behavior for bytes fields.
+  bool legacy_bytes_fields;
   // What style of imports should be used.
   enum ImportStyle {
     IMPORT_CLOSURE,    // goog.require()
@@ -82,7 +82,7 @@ struct GeneratorOptions {
         namespace_prefix(""),
         library(""),
         error_on_name_conflict(false),
-        binary(false),
+        legacy_bytes_fields(false),
         import_style(IMPORT_CLOSURE) {}
 
   bool ParseFromOptions(
@@ -92,7 +92,7 @@ struct GeneratorOptions {
 
 class LIBPROTOC_EXPORT Generator : public CodeGenerator {
  public:
-  Generator() {}
+  Generator(bool binary) : binary_(binary) {}
   virtual ~Generator() {}
 
   virtual bool Generate(const FileDescriptor* file,
@@ -111,6 +111,8 @@ class LIBPROTOC_EXPORT Generator : public CodeGenerator {
                            string* error) const;
 
  private:
+  bool binary_;
+
   void GenerateHeader(const GeneratorOptions& options,
                       io::Printer* printer) const;
 
