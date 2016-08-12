@@ -25,6 +25,7 @@ docker build -t $DOCKER_IMAGE_NAME $DOCKERFILE_DIR
 CCACHE_DIR=/tmp/protobuf-ccache
 mkdir -p $CCACHE_DIR
 
+
 # Choose random name for docker container
 CONTAINER_NAME="build_and_run_docker_$(uuidgen)"
 
