@@ -6,7 +6,7 @@ function pre_build {
     # Runs in the root directory of this repository.
     pwd
     ls
-    cd python 
+    cd protobuf/python
 }
 
 function run_tests {
