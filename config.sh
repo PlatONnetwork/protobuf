@@ -40,5 +40,5 @@ function build_wheel {
 function run_tests {
     # Runs tests on installed distribution from an empty directory
     python --version
-    python -c "import sys; import astropy; sys.exit(astropy.test(remote_data='none'))"
+    python -c "import google.protobuf;"
 }
