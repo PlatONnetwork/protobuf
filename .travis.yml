@@ -5,6 +5,7 @@ env:
       - PLAT=x86_64
       - UNICODE_WIDTH=32
       - WHEELHOUSE_UPLOADER_USERNAME=travis-worker
+      - MACOSX_DEPLOYMENT_TARGET=10.12
 
 language: python
 # Default Python version is usually 2.7
