@@ -44,9 +44,10 @@ install:
     - python -c "import struct; print(struct.calcsize('P') * 8)"
 
     # Install protoc
-    - curl -L -o protoc-%PROTOC_VERSION%.zip https://github.com/google/protobuf/releases/download/%PROTOC_VERSION%/protoc-%PROTOC_VERSION%-win32.zip
+    - curl -L -o protoc-%PROTOC_VERSION%.zip https://github.com/google/protobuf/releases/download/v%PROTOC_VERSION%/protoc-%PROTOC_VERSION%-win32.zip
     - 7z x protoc-%PROTOC_VERSION%.zip
     - del /Q protoc-%PROTOC_VERSION%.zip
+    - cd bin
     - dir
 
 build_script:
