@@ -6,6 +6,7 @@ environment:
     REPO_DIR: protobuf
     PACKAGE_NAME: protobuf
     BUILD_COMMIT: v3.5.1
+    PROTOC_VERSION: 3.5.1
     # NP_BUILD_DEP: "numpy==1.10.4"
     # NP_TEST_DEP: "numpy==1.10.4"
     # OTHER_BUILD_DEP: "cython jinja2"
@@ -41,6 +42,12 @@ install:
     # Check that we have the expected version and architecture for Python
     - python --version
     - python -c "import struct; print(struct.calcsize('P') * 8)"
+
+    # Install protoc
+    - curl -L -o protoc-%PROTOC_VERSION%.zip https://github.com/google/protobuf/releases/download/%PROTOC_VERSION%/protoc-%PROTOC_VERSION%-win32.zip
+    - 7z x protoc-%PROTOC_VERSION%.zip
+    - del /Q protoc-%PROTOC_VERSION%.zip
+    - dir
 
 build_script:
     # # Install the dependencies of the project.
