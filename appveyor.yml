@@ -47,10 +47,10 @@ install:
     - curl -L -o protoc-%PROTOC_VERSION%.zip https://github.com/google/protobuf/releases/download/v%PROTOC_VERSION%/protoc-%PROTOC_VERSION%-win32.zip
     - 7z x protoc-%PROTOC_VERSION%.zip
     - del /Q protoc-%PROTOC_VERSION%.zip
-    - cd bin
-    - dir
+    - SET PATH=%cd%\bin;%PATH%
 
 build_script:
+    - CALL appveyor.bat
     # # Install the dependencies of the project.
     # - pip install %NP_BUILD_DEP% %OTHER_BUILD_DEPENDS%
     # # Build wheel
