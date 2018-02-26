@@ -1,3 +1,4 @@
+
 # vim ft=yaml
 # CI on Windows via appveyor
 
@@ -7,6 +8,8 @@ environment:
     PACKAGE_NAME: protobuf
     BUILD_COMMIT: v3.5.1
     PROTOC_VERSION: 3.5.1
+    MINGW_32: C:\mingw-w64\i686-6.3.0-posix-dwarf-rt_v5-rev1\mingw32\bin
+    MINGW_64: C:\mingw-w64\x86_64-6.3.0-posix-seh-rt_v5-rev1\mingw64\bin
     # NP_BUILD_DEP: "numpy==1.10.4"
     # NP_TEST_DEP: "numpy==1.10.4"
     # OTHER_BUILD_DEP: "cython jinja2"
@@ -71,6 +74,19 @@ install:
     - 7z x protoc-%PROTOC_VERSION%.zip
     - del /Q protoc-%PROTOC_VERSION%.zip
     - SET PATH=%cd%\bin;%PATH%
+    # - IF "%PYTHON_ARCH%"=="32" (
+    #     SET MINGW=%MINGW_32%
+    #   ) ELSE (
+    #     SET MINGW=%MINGW_64%
+    #   )
+    - SET MINGW=%MINGW_32%
+    - echo %MINGW%
+    - echo %PYTHON%
+    - SET PATH=%MINGW%;%PATH%
+    - dir %MINGW%
+    - echo [build] > C:\Python27\Lib\distutils\distutils.cfg
+    - echo.compiler = mingw32 >> C:\Python27\Lib\distutils\distutils.cfg
+    - cat "C:\Python27\Lib\distutils\distutils.cfg"
 
 build_script:
     - CALL appveyor.bat
