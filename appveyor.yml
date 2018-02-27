@@ -10,6 +10,8 @@ environment:
     PROTOC_VERSION: 3.5.1
     MINGW_32: C:\mingw-w64\i686-6.3.0-posix-dwarf-rt_v5-rev1\mingw32\bin
     MINGW_64: C:\mingw-w64\x86_64-6.3.0-posix-seh-rt_v5-rev1\mingw64\bin
+    BUILD_DLL: OFF
+    UNICODE: ON
     # NP_BUILD_DEP: "numpy==1.10.4"
     # NP_TEST_DEP: "numpy==1.10.4"
     # OTHER_BUILD_DEP: "cython jinja2"
@@ -55,6 +57,7 @@ matrix:
 install:
     # Fetch submodules
     - git submodule update --init --recursive
+
     # Prepend newly installed Python to the PATH of this build (this cannot be
     # done from inside the powershell script as it would require to restart
     # the parent CMD process).
@@ -88,6 +91,22 @@ install:
     - echo.compiler = mingw32 >> C:\Python27\Lib\distutils\distutils.cfg
     - cat "C:\Python27\Lib\distutils\distutils.cfg"
 
+    # Install zlib
+    - mkdir zlib
+    - curl -L -o zlib.zip http://www.winimage.com/zLibDll/zlib123dll.zip
+    - curl -L -o zlib-src.zip http://www.winimage.com/zLibDll/zlib123.zip
+    - 7z x zlib.zip -ozlib
+    - 7z x zlib-src.zip -ozlib\include
+    - SET ZLIB_ROOT=%cd%\zlib
+    - del /Q zlib.zip
+    - del /Q zlib-src.zip
+
+before_build:
+  - if %PYTHON_VERSION%==2.7 set generator=MSYS Makefiles
+  - if %PYTHON_VERSION%==3.4 set generator=MSYS Makefiles
+  - if %PYTHON_VERSION%==3.5 set generator=Visual Studio 14
+  - if %PYTHON_VERSION%==3.6 set generator=Visual Studio 14
+
 build_script:
     - CALL appveyor.bat
     # # Install the dependencies of the project.
@@ -117,7 +136,7 @@ test_script:
     # - cd ..
 
 artifacts:
-    - path: "%REPO_DIR%\\dist\\*"
+    - path: "%REPO_DIR%\\python\\dist\\*"
 
 on_success:
   # # Upload the generated wheel package to Rackspace
