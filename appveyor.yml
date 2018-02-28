@@ -77,19 +77,6 @@ install:
     - 7z x protoc-%PROTOC_VERSION%.zip
     - del /Q protoc-%PROTOC_VERSION%.zip
     - SET PATH=%cd%\bin;%PATH%
-    # - IF "%PYTHON_ARCH%"=="32" (
-    #     SET MINGW=%MINGW_32%
-    #   ) ELSE (
-    #     SET MINGW=%MINGW_64%
-    #   )
-    - SET MINGW=%MINGW_32%
-    - echo %MINGW%
-    - echo %PYTHON%
-    - SET PATH=%MINGW%;%PATH%
-    - dir %MINGW%
-    - echo [build] > C:\Python27\Lib\distutils\distutils.cfg
-    - echo.compiler = mingw32 >> C:\Python27\Lib\distutils\distutils.cfg
-    - cat "C:\Python27\Lib\distutils\distutils.cfg"
 
     # Install zlib
     - mkdir zlib
@@ -102,10 +89,15 @@ install:
     - del /Q zlib-src.zip
 
 before_build:
-  - if %PYTHON_VERSION%==2.7 set generator=MSYS Makefiles
-  - if %PYTHON_VERSION%==3.4 set generator=MSYS Makefiles
-  - if %PYTHON_VERSION%==3.5 set generator=Visual Studio 14
-  - if %PYTHON_VERSION%==3.6 set generator=Visual Studio 14
+    - if %PYTHON_VERSION%==2.7 set generator=MSYS Makefiles
+    - if %PYTHON_VERSION%==3.4 set generator=MSYS Makefiles
+    - if %PYTHON_VERSION%==3.5 set generator=Visual Studio 14
+    - if %PYTHON_VERSION%==3.6 set generator=Visual Studio 14
+    - if %PYTHON_ARCH%==32 set MINGW=%MINGW_32%
+    - if %PYTHON_ARCH%==64 set MINGW=%MINGW_64%
+    - set PATH=%MINGW%;%PATH%
+    - echo [build] > %PYTHON%\Lib\distutils\distutils.cfg
+    - echo.compiler = mingw32 >> %PYTHON%\Lib\distutils\distutils.cfg
 
 build_script:
     - CALL appveyor.bat
