@@ -7,7 +7,6 @@ environment:
     REPO_DIR: protobuf
     PACKAGE_NAME: protobuf
     BUILD_COMMIT: v3.5.1
-    PROTOC_VERSION: 3.5.1
     MINGW_32: C:\mingw-w64\i686-6.3.0-posix-dwarf-rt_v5-rev1\mingw32\bin
     MINGW_64: C:\mingw-w64\x86_64-6.3.0-posix-seh-rt_v5-rev1\mingw64\bin
     BUILD_DLL: OFF
@@ -72,12 +71,6 @@ install:
     - python --version
     - python -c "import struct; print(struct.calcsize('P') * 8)"
 
-    # Install protoc
-    - curl -L -o protoc-%PROTOC_VERSION%.zip https://github.com/google/protobuf/releases/download/v%PROTOC_VERSION%/protoc-%PROTOC_VERSION%-win32.zip
-    - 7z x protoc-%PROTOC_VERSION%.zip
-    - del /Q protoc-%PROTOC_VERSION%.zip
-    - SET PATH=%cd%\bin;%PATH%
-
     # Install zlib
     - mkdir zlib
     - curl -L -o zlib.zip http://www.winimage.com/zLibDll/zlib123dll.zip
@@ -89,15 +82,32 @@ install:
     - del /Q zlib-src.zip
 
 before_build:
+    - if %PYTHON%==C:\Python35 set generator=Visual Studio 14
+    - if %PYTHON%==C:\Python35 set vcplatform=Win32
+
+    - if %PYTHON%==C:\Python35-x64 set generator=Visual Studio 14 Win64
+    - if %PYTHON%==C:\Python35-x64 set vcplatform=x64
+
+    - if %PYTHON%==C:\Python36 set generator=Visual Studio 14
+    - if %PYTHON%==C:\Python36 set vcplatform=Win32
+
+    - if %PYTHON%==C:\Python36-x64 set generator=Visual Studio 14 Win64
+    - if %PYTHON%==C:\Python36-x64 set vcplatform=x64
+
+    - if %PYTHON%==C:\Python27 set MINGW=%MINGW_32%
+    - if %PYTHON%==C:\Python27-x64 set MINGW=%MINGW_64%
+    - if %PYTHON%==C:\Python34 set MINGW=%MINGW_32%
+    - if %PYTHON%==C:\Python34-x64 set MINGW=%MINGW_64%
+
     - if %PYTHON_VERSION%==2.7 set generator=MSYS Makefiles
+    - if %PYTHON_VERSION%==2.7 set PATH=%MINGW%;%PATH%
+    - if %PYTHON_VERSION%==2.7 echo [build] > %PYTHON%\Lib\distutils\distutils.cfg
+    - if %PYTHON_VERSION%==2.7 echo.compiler = mingw32 >> %PYTHON%\Lib\distutils\distutils.cfg
+
     - if %PYTHON_VERSION%==3.4 set generator=MSYS Makefiles
-    - if %PYTHON_VERSION%==3.5 set generator=Visual Studio 14
-    - if %PYTHON_VERSION%==3.6 set generator=Visual Studio 14
-    - if %PYTHON_ARCH%==32 set MINGW=%MINGW_32%
-    - if %PYTHON_ARCH%==64 set MINGW=%MINGW_64%
-    - set PATH=%MINGW%;%PATH%
-    - echo [build] > %PYTHON%\Lib\distutils\distutils.cfg
-    - echo.compiler = mingw32 >> %PYTHON%\Lib\distutils\distutils.cfg
+    - if %PYTHON_VERSION%==3.4 set PATH=%MINGW%;%PATH%
+    - if %PYTHON_VERSION%==3.4 echo [build] > %PYTHON%\Lib\distutils\distutils.cfg
+    - if %PYTHON_VERSION%==3.4 echo.compiler = mingw32 >> %PYTHON%\Lib\distutils\distutils.cfg
 
 build_script:
     - CALL appveyor.bat
