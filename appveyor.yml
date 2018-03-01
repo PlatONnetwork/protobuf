@@ -11,10 +11,8 @@ environment:
     MINGW_64: C:\mingw-w64\x86_64-6.3.0-posix-seh-rt_v5-rev1\mingw64\bin
     BUILD_DLL: OFF
     UNICODE: ON
-    # NP_BUILD_DEP: "numpy==1.10.4"
-    # NP_TEST_DEP: "numpy==1.10.4"
-    # OTHER_BUILD_DEP: "cython jinja2"
-    # OTHER_TEST_DEP: "pytest-astropy"
+    PB_TEST_DEP: "six==1.9"
+    OTHER_TEST_DEP: "setuptools==38.5.1"
     WHEELHOUSE_UPLOADER_USERNAME: travis-worker
 
   matrix:
@@ -112,31 +110,23 @@ before_build:
 
 build_script:
     - CALL appveyor.bat
-    # # Install the dependencies of the project.
-    # - pip install %NP_BUILD_DEP% %OTHER_BUILD_DEPENDS%
-    # # Build wheel
-    # - pip install wheel
-    # - cd %REPO_DIR%
-    # - git checkout %BUILD_COMMIT%
-    # - python setup.py bdist_wheel
-    # - cd ..
 
 test_script:
-    # # create test env
-    # - virtualenv --python %PYTHON%\Python.exe test_env
-    # - test_env\Scripts\activate.bat
-    # - where python
-    # - pip install %NP_TEST_DEP% %OTHER_TEST_DEP%
+    # create test env
+    - virtualenv --python %PYTHON%\Python.exe test_env
+    - test_env\Scripts\activate.bat
+    - where python
+    - pip install %PB_TEST_DEP%
 
-    # # install from wheel
-    # - pip install --pre --no-index --find-links %REPO_DIR%\dist\ %PACKAGE_NAME%
+    # install from wheel
+    - pip install --pre --no-index --find-links %REPO_DIR%\python\dist\ %PACKAGE_NAME%
 
-    # # Change into an innocuous directory and find tests from installation
-    # - mkdir for_testing
-    # - cd for_testing
-    # - python --version
-    # - python -c "import astropy; astropy.test(remote_data='none')"
-    # - cd ..
+    # Change into an innocuous directory and find tests from installation
+    - mkdir for_testing
+    - cd for_testing
+    - python --version
+    - python -c "import google.protobuf;"
+    - cd ..
 
 artifacts:
     - path: "%REPO_DIR%\\python\\dist\\*"
