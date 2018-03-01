@@ -29,6 +29,19 @@ function bdist_wheel_cmd {
     # fixed with bdist_wheel:
     # https://github.com/warner/python-versioneer/issues/121
     local abs_wheelhouse=$1
+
+    # Modify build version
+    pwd
+    ls
+    echo $abs_wheelhouse
+    echo $BUILD_VERSION
+    if [[ "$TRAVIS_OS_NAME" == "osx" ]]; then
+        sed -i.bu "s/^__version__.*/__version__ = '$BUILD_VERSION'/" google/protobuf/__init__.py
+    else
+        sed -i "s/^__version__.*/__version__ = '3.5.1.dev1'/" google/protobuf/__init__.py
+    fi
+    cat google/protobuf/__init__.py
+    
     python setup.py bdist_wheel --cpp_implementation --compile_static_extension
     cp dist/*.whl $abs_wheelhouse
 }

@@ -2,6 +2,7 @@ env:
   global:
       - REPO_DIR=protobuf
       - BUILD_COMMIT=v3.5.1
+      - BUILD_VERSION=3.5.1.dev1
       - PLAT=x86_64
       - UNICODE_WIDTH=32
       - WHEELHOUSE_UPLOADER_USERNAME=travis-worker

@@ -45,6 +45,9 @@ REM ======================
 
 cd python
 
+REM Modify Build Version
+sed -i '/__version__/c\__version__ = \'%BUILD_VERSION%\'' google/protobuf/__init__.py
+
 REM https://github.com/Theano/Theano/issues/4926
 sed -i '/Wno-sign-compare/a \ \ \ \ extra_compile_args.append(\'-D_hypot=hypot\')' setup.py
 sed -i 's/\'-DPYTHON_PROTO2_CPP_IMPL_V2\'/\'-DPYTHON_PROTO2_CPP_IMPL_V2\',\'-D_hypot=hypot\'/g' setup.py
@@ -68,6 +71,5 @@ sed -i '/-Wno-invalid-offsetof/d' setup.py
 sed -i '/-Wno-sign-compare/d' setup.py
 :msvc_remove_flags_end
 
-cat setup.py
 python setup.py bdist_wheel --cpp_implementation --compile_static_extension
 cd ..\..
