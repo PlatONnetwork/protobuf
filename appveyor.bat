@@ -1,7 +1,5 @@
 setlocal
 
-pip install wheel
-
 REM Checkout release commit
 cd %REPO_DIR%
 git checkout %BUILD_COMMIT%
