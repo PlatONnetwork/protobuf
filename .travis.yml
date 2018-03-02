@@ -5,8 +5,10 @@ env:
       - BUILD_VERSION=3.5.1.dev1
       - PLAT=x86_64
       - UNICODE_WIDTH=32
-      - WHEELHOUSE_UPLOADER_USERNAME=travis-worker
       - MACOSX_DEPLOYMENT_TARGET=10.9
+      - WHEELHOUSE_UPLOADER_USERNAME=protobuf-wheel-test
+      - secure:
+          "SyS97P0pulx8rCNLHIxqUFBfovzKqQC5gYSV0qUMFm+dRcZH80Z8vzP0ihmibu2CmFV79Vf1esckvCBOV7difWruT3VVMj2Tdf2gMRk6kjai5YUP+3UPT8RMbkVTUKl0qII0ZPul0G4dHuqtJf5Mq2Gmco+3NZMg6Vr9VrZbBoY="
 
 language: python
 # Default Python version is usually 2.7
@@ -74,9 +76,7 @@ script:
     - install_run $PLAT
 
 after_success:
-    # Upload wheels to Rackspace container
-    # - pip install wheelhouse-uploader
-    # - python -m wheelhouse_uploader upload --local-folder
-    #       ${TRAVIS_BUILD_DIR}/wheelhouse/
-    #       --no-update-index
-    #       wheels
+    - pip install twine
+    - brew upgrade openssl
+    - source deploy_travis.sh
+    - deploy
