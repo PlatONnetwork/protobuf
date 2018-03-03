@@ -77,6 +77,6 @@ script:
 
 after_success:
     - pip install twine
-    - brew upgrade openssl
+    - pip install pyOpenSSL ndg-httpsclient pyasn1
     - source deploy_travis.sh
     - deploy
