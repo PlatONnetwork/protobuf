@@ -48,28 +48,28 @@ cd python
 REM Modify Build Version
 sed -i '/__version__/c\__version__ = \'%BUILD_VERSION%\'' google/protobuf/__init__.py
 
-REM https://github.com/Theano/Theano/issues/4926
-sed -i '/Wno-sign-compare/a \ \ \ \ extra_compile_args.append(\'-D_hypot=hypot\')' setup.py
-sed -i 's/\'-DPYTHON_PROTO2_CPP_IMPL_V2\'/\'-DPYTHON_PROTO2_CPP_IMPL_V2\',\'-D_hypot=hypot\'/g' setup.py
+REM REM https://github.com/Theano/Theano/issues/4926
+REM sed -i '/Wno-sign-compare/a \ \ \ \ extra_compile_args.append(\'-D_hypot=hypot\')' setup.py
+REM sed -i 's/\'-DPYTHON_PROTO2_CPP_IMPL_V2\'/\'-DPYTHON_PROTO2_CPP_IMPL_V2\',\'-D_hypot=hypot\'/g' setup.py
 
-REM https://github.com/tpaviot/pythonocc-core/issues/48
-IF NOT %PYTHON_ARCH%==64 GOTO no_win64_change
-sed -i '/Wno-sign-compare/a \ \ \ \ extra_compile_args.append(\'-DMS_WIN64\')' setup.py
-sed -i 's/\'-DPYTHON_PROTO2_CPP_IMPL_V2\'/\'-DPYTHON_PROTO2_CPP_IMPL_V2\',\'-DMS_WIN64\'/g' setup.py
-:no_win64_change
+REM REM https://github.com/tpaviot/pythonocc-core/issues/48
+REM IF NOT %PYTHON_ARCH%==64 GOTO no_win64_change
+REM sed -i '/Wno-sign-compare/a \ \ \ \ extra_compile_args.append(\'-DMS_WIN64\')' setup.py
+REM sed -i 's/\'-DPYTHON_PROTO2_CPP_IMPL_V2\'/\'-DPYTHON_PROTO2_CPP_IMPL_V2\',\'-DMS_WIN64\'/g' setup.py
+REM :no_win64_change
 
-REM MSVS default is dymanic
-IF NOT DEFINED vcplatform GOTO msvc_static_build_end
-sed -i '/Wno-sign-compare/a \ \ \ \ extra_compile_args.append(\'/MT\')' setup.py
-sed -i 's/\'-DPYTHON_PROTO2_CPP_IMPL_V2\'/\'-DPYTHON_PROTO2_CPP_IMPL_V2\',\'\/MT\'/g' setup.py
-:msvc_static_build_end
+REM REM MSVS default is dymanic
+REM IF NOT DEFINED vcplatform GOTO msvc_static_build_end
+REM sed -i '/Wno-sign-compare/a \ \ \ \ extra_compile_args.append(\'/MT\')' setup.py
+REM sed -i 's/\'-DPYTHON_PROTO2_CPP_IMPL_V2\'/\'-DPYTHON_PROTO2_CPP_IMPL_V2\',\'\/MT\'/g' setup.py
+REM :msvc_static_build_end
 
-REM MSVC doesn't recognize these options
-IF NOT DEFINED vcplatform GOTO msvc_remove_flags_end
-sed -i '/-Wno-write-strings/c\    extra_compile_args = []' setup.py
-sed -i '/-Wno-invalid-offsetof/d' setup.py
-sed -i '/-Wno-sign-compare/d' setup.py
-:msvc_remove_flags_end
+REM REM MSVC doesn't recognize these options
+REM IF NOT DEFINED vcplatform GOTO msvc_remove_flags_end
+REM sed -i '/-Wno-write-strings/c\    extra_compile_args = []' setup.py
+REM sed -i '/-Wno-invalid-offsetof/d' setup.py
+REM sed -i '/-Wno-sign-compare/d' setup.py
+REM :msvc_remove_flags_end
 
 python setup.py bdist_wheel --cpp_implementation --compile_static_extension
 cd ..\..

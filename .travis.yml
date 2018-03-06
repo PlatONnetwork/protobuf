@@ -1,7 +1,7 @@
 env:
   global:
       - REPO_DIR=protobuf
-      - BUILD_COMMIT=v3.5.1
+      - BUILD_COMMIT=3.5.x
       - BUILD_VERSION=3.5.1.dev1
       - PLAT=x86_64
       - UNICODE_WIDTH=32
@@ -79,4 +79,4 @@ after_success:
     - pip install twine
     - pip install pyOpenSSL ndg-httpsclient pyasn1
     - source deploy_travis.sh
-    - deploy
+    # - deploy

@@ -6,7 +6,7 @@ environment:
   global:
     REPO_DIR: protobuf
     PACKAGE_NAME: protobuf
-    BUILD_COMMIT: v3.5.1
+    BUILD_COMMIT: 3.5.x
     BUILD_VERSION: 3.5.1.dev1
     MINGW_32: C:\mingw-w64\i686-6.3.0-posix-dwarf-rt_v5-rev1\mingw32\bin
     MINGW_64: C:\mingw-w64\x86_64-6.3.0-posix-seh-rt_v5-rev1\mingw64\bin
