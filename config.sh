@@ -53,5 +53,5 @@ function build_wheel {
 function run_tests {
     # Runs tests on installed distribution from an empty directory
     python --version
-    python -c "import google.protobuf;"
+    python -c "from google.protobuf.pyext import _message;"
 }

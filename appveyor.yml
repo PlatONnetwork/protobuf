@@ -126,7 +126,7 @@ test_script:
     - mkdir for_testing
     - cd for_testing
     - python --version
-    - python -c "import google.protobuf;"
+    - python -c "from google.protobuf.pyext import _message;"
     - cd ..
 
 artifacts:
