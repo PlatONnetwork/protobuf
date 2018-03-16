@@ -2,7 +2,7 @@ env:
   global:
       - REPO_DIR=protobuf
       - BUILD_COMMIT=v3.5.2
-      - BUILD_VERSION=3.5.2
+      - BUILD_VERSION=3.5.2.post1
       - PLAT=x86_64
       - UNICODE_WIDTH=32
       - MACOSX_DEPLOYMENT_TARGET=10.9

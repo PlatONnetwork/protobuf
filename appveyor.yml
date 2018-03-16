@@ -7,7 +7,7 @@ environment:
     REPO_DIR: protobuf
     PACKAGE_NAME: protobuf
     BUILD_COMMIT: v3.5.2
-    BUILD_VERSION: 3.5.2
+    BUILD_VERSION: 3.5.2.post1
     BUILD_DLL: OFF
     UNICODE: ON
     PB_TEST_DEP: "six==1.9"

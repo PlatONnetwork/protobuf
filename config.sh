@@ -38,7 +38,7 @@ function bdist_wheel_cmd {
     if [[ "$TRAVIS_OS_NAME" == "osx" ]]; then
         sed -i.bu "s/^__version__.*/__version__ = '$BUILD_VERSION'/" google/protobuf/__init__.py
     else
-        sed -i "s/^__version__.*/__version__ = '3.5.2'/" google/protobuf/__init__.py
+        sed -i "s/^__version__.*/__version__ = '3.5.2.post1'/" google/protobuf/__init__.py
     fi
     cat google/protobuf/__init__.py
     
