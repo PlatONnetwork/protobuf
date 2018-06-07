@@ -15,14 +15,6 @@ environment:
     WHEELHOUSE_UPLOADER_USERNAME: travis-worker
 
   matrix:
-    - PYTHON: C:\Python34
-      PYTHON_VERSION: 3.4
-      PYTHON_ARCH: 32
-
-    - PYTHON: C:\Python34-x64
-      PYTHON_VERSION: 3.4
-      PYTHON_ARCH: 64
-
     - PYTHON: C:\Python35
       PYTHON_VERSION: 3.5
       PYTHON_ARCH: 32
@@ -82,12 +74,6 @@ install:
     - del /Q zlib-src.zip
 
 before_build:
-    - if %PYTHON%==C:\Python34 set generator=Visual Studio 10 2010
-    - if %PYTHON%==C:\Python34 set vcplatform=Win32
-
-    - if %PYTHON%==C:\Python34-x64 set generator=Visual Studio 10 2010 Win64
-    - if %PYTHON%==C:\Python34-x64 set vcplatform=x64
-
     - if %PYTHON%==C:\Python35 set generator=Visual Studio 14
     - if %PYTHON%==C:\Python35 set vcplatform=Win32
 
