@@ -33,15 +33,6 @@ function bdist_wheel_cmd {
     # Modify build version
     pwd
     ls
-    echo $abs_wheelhouse
-    echo $BUILD_VERSION
-    if [[ "$TRAVIS_OS_NAME" == "osx" ]]; then
-        sed -i.bu "s/^__version__.*/__version__ = '$BUILD_VERSION'/" google/protobuf/__init__.py
-    else
-        sed -i "s/^__version__.*/__version__ = '3.6.1'/" google/protobuf/__init__.py
-    fi
-    cat google/protobuf/__init__.py
-    
     python setup.py bdist_wheel --cpp_implementation --compile_static_extension
     cp dist/*.whl $abs_wheelhouse
 }
