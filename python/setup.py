@@ -207,9 +207,9 @@ if __name__ == '__main__':
     elif os.getenv('KOKORO_BUILD_NUMBER') or os.getenv('KOKORO_BUILD_ID'):
       extra_compile_args.append('-std=c++11')
 
-    if warnings_as_errors in sys.argv:
-      extra_compile_args.append('-Werror')
-      sys.argv.remove(warnings_as_errors)
+    # if warnings_as_errors in sys.argv:
+    #   extra_compile_args.append('-Werror')
+    #   sys.argv.remove(warnings_as_errors)
 
     # C++ implementation extension
     ext_module_list.extend([
