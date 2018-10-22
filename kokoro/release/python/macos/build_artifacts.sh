@@ -37,6 +37,8 @@ build_artifact_version() {
   clean_code $REPO_DIR $BUILD_COMMIT
   pushd $REPO_DIR
   git cherry-pick 0a59054c30e4f0ba10f10acfc1d7f3814c63e1a7
+  git config --global user.email "teboring@google.com"
+  git config --global user.name "Bo Yang"
   popd
 
   build_wheel $REPO_DIR/python $PLAT
