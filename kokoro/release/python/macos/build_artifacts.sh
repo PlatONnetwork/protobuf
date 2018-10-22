@@ -35,7 +35,7 @@ build_artifact_version() {
   before_install
 
   clean_code $REPO_DIR $BUILD_COMMIT
-  sed -i.bak '/Werror/d' $REPO_DIR/python/setup.py
+  sed -i.bak '/Wno-sign-compare/a \ \ \ \ \ \ \ \ extra_compile_args.append("-Wno-incompatible-pointer-types")' $REPO_DIR/python/setup.py
 
   build_wheel $REPO_DIR/python $PLAT
 
