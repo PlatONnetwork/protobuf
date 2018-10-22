@@ -29,6 +29,7 @@ git clone https://github.com/google/protobuf.git
 REM Checkout release commit
 cd %REPO_DIR%
 git checkout %BUILD_COMMIT%
+git cherry-pick 0a59054c30e4f0ba10f10acfc1d7f3814c63e1a7
 
 REM ======================
 REM Build Protobuf Library
@@ -54,8 +55,6 @@ REM ======================
 cd python
 
 REM sed -i 's/\ extra_compile_args\ =\ \[\]/\ extra_compile_args\ =\ \[\'\/MT\'\]/g' setup.py
-sed -i 's/\ extra_compile_args\ =\ \[\]/\ extra_compile_args\ =\ \[\'-Wno-incompatible-pointer-types\'\]/g' setup.py
-sed -i '/Werror/d' setup.py
 
 python setup.py bdist_wheel --cpp_implementation --compile_static_extension
 dir dist
