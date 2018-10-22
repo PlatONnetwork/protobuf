@@ -29,9 +29,9 @@ git clone https://github.com/google/protobuf.git
 REM Checkout release commit
 cd %REPO_DIR%
 git checkout %BUILD_COMMIT%
-git cherry-pick 0a59054c30e4f0ba10f10acfc1d7f3814c63e1a7
 git config --global user.email "teboring@google.com"
 git config --global user.name "Bo Yang"
+git cherry-pick 0a59054c30e4f0ba10f10acfc1d7f3814c63e1a7
 
 REM ======================
 REM Build Protobuf Library

@@ -34,9 +34,9 @@ build_artifact_version() {
   sed -i '/Wno-sign-compare/a \ \ \ \ \ \ \ \ extra_compile_args.append("-std=c++11")' $REPO_DIR/python/setup.py
   cat $REPO_DIR/python/setup.py
   pushd $REPO_DIR
-  git cherry-pick 0a59054c30e4f0ba10f10acfc1d7f3814c63e1a7
   git config --global user.email "teboring@google.com"
   git config --global user.name "Bo Yang"
+  git cherry-pick 0a59054c30e4f0ba10f10acfc1d7f3814c63e1a7
   popd
 
   build_wheel $REPO_DIR/python $PLAT
