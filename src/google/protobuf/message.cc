@@ -702,10 +702,10 @@ GeneratedMessageFactory* GeneratedMessageFactory::singleton() {
   return instance;
 }
 
-void GeneratedMessageFactory::RegisterFile(const char* file,
-                                           void* registration_data) {
-  if (!InsertIfNotPresent(&file_map_, file, registration_data)) {
-    GOOGLE_LOG(FATAL) << "File is already registered: " << file;
+void GeneratedMessageFactory::RegisterFile(
+    const char* file, RegistrationFunc* registration_func) {
+  if (!InsertIfNotPresent(&file_map_, file, registration_func)) {
+    //GOOGLE_LOG(FATAL) << "File is already registered: " << file;
   }
 }
 
