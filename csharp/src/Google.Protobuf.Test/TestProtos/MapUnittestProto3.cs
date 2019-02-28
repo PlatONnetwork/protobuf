@@ -541,7 +541,9 @@ namespace Google.Protobuf.TestProtos {
       while ((tag = input.ReadTag()) != 0) {
         switch(tag) {
           default:
-            _unknownFields = pb::UnknownFieldSet.MergeFieldFrom(_unknownFields, input);
+            if (!pb::UnknownFieldSet.MergeFieldFrom(ref _unknownFields, input)) {
+              return;
+            }
             break;
           case 10: {
             mapInt32Int32_.AddEntriesFrom(input, _map_mapInt32Int32_codec);
@@ -642,7 +644,7 @@ namespace Google.Protobuf.TestProtos {
 
     [global::System.Diagnostics.DebuggerNonUserCodeAttribute]
     public TestMapSubmessage(TestMapSubmessage other) : this() {
-      TestMap = other.testMap_ != null ? other.TestMap.Clone() : null;
+      testMap_ = other.testMap_ != null ? other.testMap_.Clone() : null;
       _unknownFields = pb::UnknownFieldSet.Clone(other._unknownFields);
     }
 
@@ -724,7 +726,7 @@ namespace Google.Protobuf.TestProtos {
       }
       if (other.testMap_ != null) {
         if (testMap_ == null) {
-          testMap_ = new global::Google.Protobuf.TestProtos.TestMap();
+          TestMap = new global::Google.Protobuf.TestProtos.TestMap();
         }
         TestMap.MergeFrom(other.TestMap);
       }
@@ -737,13 +739,15 @@ namespace Google.Protobuf.TestProtos {
       while ((tag = input.ReadTag()) != 0) {
         switch(tag) {
           default:
-            _unknownFields = pb::UnknownFieldSet.MergeFieldFrom(_unknownFields, input);
+            if (!pb::UnknownFieldSet.MergeFieldFrom(ref _unknownFields, input)) {
+              return;
+            }
             break;
           case 10: {
             if (testMap_ == null) {
-              testMap_ = new global::Google.Protobuf.TestProtos.TestMap();
+              TestMap = new global::Google.Protobuf.TestProtos.TestMap();
             }
-            input.ReadMessage(testMap_);
+            input.ReadMessage(TestMap);
             break;
           }
         }
@@ -861,7 +865,9 @@ namespace Google.Protobuf.TestProtos {
       while ((tag = input.ReadTag()) != 0) {
         switch(tag) {
           default:
-            _unknownFields = pb::UnknownFieldSet.MergeFieldFrom(_unknownFields, input);
+            if (!pb::UnknownFieldSet.MergeFieldFrom(ref _unknownFields, input)) {
+              return;
+            }
             break;
           case 10: {
             mapInt32Message_.AddEntriesFrom(input, _map_mapInt32Message_codec);
@@ -1001,7 +1007,9 @@ namespace Google.Protobuf.TestProtos {
       while ((tag = input.ReadTag()) != 0) {
         switch(tag) {
           default:
-            _unknownFields = pb::UnknownFieldSet.MergeFieldFrom(_unknownFields, input);
+            if (!pb::UnknownFieldSet.MergeFieldFrom(ref _unknownFields, input)) {
+              return;
+            }
             break;
           case 10: {
             map1_.AddEntriesFrom(input, _map_map1_codec);
@@ -1350,7 +1358,9 @@ namespace Google.Protobuf.TestProtos {
       while ((tag = input.ReadTag()) != 0) {
         switch(tag) {
           default:
-            _unknownFields = pb::UnknownFieldSet.MergeFieldFrom(_unknownFields, input);
+            if (!pb::UnknownFieldSet.MergeFieldFrom(ref _unknownFields, input)) {
+              return;
+            }
             break;
           case 10: {
             mapInt32Int32_.AddEntriesFrom(input, _map_mapInt32Int32_codec);
@@ -1531,7 +1541,9 @@ namespace Google.Protobuf.TestProtos {
       while ((tag = input.ReadTag()) != 0) {
         switch(tag) {
           default:
-            _unknownFields = pb::UnknownFieldSet.MergeFieldFrom(_unknownFields, input);
+            if (!pb::UnknownFieldSet.MergeFieldFrom(ref _unknownFields, input)) {
+              return;
+            }
             break;
           case 10: {
             type_.AddEntriesFrom(input, _map_type_codec);
@@ -1666,7 +1678,9 @@ namespace Google.Protobuf.TestProtos {
       while ((tag = input.ReadTag()) != 0) {
         switch(tag) {
           default:
-            _unknownFields = pb::UnknownFieldSet.MergeFieldFrom(_unknownFields, input);
+            if (!pb::UnknownFieldSet.MergeFieldFrom(ref _unknownFields, input)) {
+              return;
+            }
             break;
           case 10: {
             entry_.AddEntriesFrom(input, _map_entry_codec);

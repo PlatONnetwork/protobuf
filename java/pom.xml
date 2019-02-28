@@ -1,17 +1,10 @@
 <?xml version="1.0" encoding="UTF-8"?>
-<project xmlns="http://maven.apache.org/POM/4.0.0"
-  xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance"
-  xsi:schemaLocation="http://maven.apache.org/POM/4.0.0 http://maven.apache.org/maven-v4_0_0.xsd">
+<project xmlns="http://maven.apache.org/POM/4.0.0" xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance" xsi:schemaLocation="http://maven.apache.org/POM/4.0.0 http://maven.apache.org/maven-v4_0_0.xsd">
   <modelVersion>4.0.0</modelVersion>
-  <parent>
-    <groupId>com.google</groupId>
-    <artifactId>google</artifactId>
-    <version>1</version>
-  </parent>
 
   <groupId>com.google.protobuf</groupId>
   <artifactId>protobuf-parent</artifactId>
-  <version>3.5.2</version>
+  <version>3.6.1</version>
   <packaging>pom</packaging>
 
   <name>Protocol Buffers [Parent]</name>
@@ -33,8 +26,6 @@
     <test.proto.dir>src/test/proto</test.proto.dir>
     <generated.sources.dir>${project.build.directory}/generated-sources</generated.sources.dir>
     <generated.testsources.dir>${project.build.directory}/generated-test-sources</generated.testsources.dir>
-    <generated.sources.lite.dir>${project.build.directory}/generated-sources-lite</generated.sources.lite.dir>
-    <generated.testsources.lite.dir>${project.build.directory}/generated-test-sources-lite</generated.testsources.lite.dir>
   </properties>
 
   <licenses>
@@ -46,8 +37,8 @@
   </licenses>
 
   <scm>
-    <url>https://github.com/google/protobuf</url>
-    <connection>scm:git:https://github.com/google/protobuf.git</connection>
+    <url>https://github.com/protocolbuffers/protobuf</url>
+    <connection>scm:git:https://github.com/protocolbuffers/protobuf.git</connection>
   </scm>
 
   <distributionManagement>
@@ -63,6 +54,13 @@
 
   <dependencyManagement>
     <dependencies>
+      <dependency>
+        <groupId>com.google.protobuf</groupId>
+        <artifactId>protobuf-bom</artifactId>
+        <version>${project.version}</version>
+        <type>pom</type>
+        <scope>import</scope>
+      </dependency>
       <dependency>
         <groupId>junit</groupId>
         <artifactId>junit</artifactId>
@@ -84,7 +82,13 @@
       <dependency>
         <groupId>com.google.guava</groupId>
         <artifactId>guava</artifactId>
-        <version>19.0</version>
+        <version>26.0-android</version>
+      </dependency>
+      <dependency>
+        <groupId>com.google.guava</groupId>
+        <artifactId>guava-testlib</artifactId>
+        <version>26.0-jre</version>
+        <scope>test</scope>
       </dependency>
     </dependencies>
   </dependencyManagement>
@@ -94,10 +98,10 @@
       <plugins>
         <plugin>
           <artifactId>maven-compiler-plugin</artifactId>
-          <version>3.6.0</version>
+          <version>3.6.1</version>
           <configuration>
-            <source>1.6</source>
-            <target>1.6</target>
+            <source>1.7</source>
+            <target>1.7</target>
           </configuration>
         </plugin>
         <plugin>
@@ -207,8 +211,8 @@
   </profiles>
 
   <modules>
+    <module>bom</module>
     <module>core</module>
-    <!-- <module>lite</module> -->
     <module>util</module>
   </modules>
 

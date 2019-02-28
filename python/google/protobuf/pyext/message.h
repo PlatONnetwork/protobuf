@@ -37,10 +37,11 @@
 #include <Python.h>
 
 #include <memory>
-#ifndef _SHARED_PTR_H
-#include <google/protobuf/stubs/shared_ptr.h>
-#endif
 #include <string>
+#include <unordered_map>
+
+#include <google/protobuf/stubs/common.h>
+#include <google/protobuf/pyext/thread_unsafe_shared_ptr.h>
 
 namespace google {
 namespace protobuf {
@@ -51,13 +52,6 @@ class FieldDescriptor;
 class Descriptor;
 class DescriptorPool;
 class MessageFactory;
-
-#ifdef _SHARED_PTR_H
-using std::shared_ptr;
-using std::string;
-#else
-using internal::shared_ptr;
-#endif
 
 namespace python {
 
@@ -71,7 +65,9 @@ typedef struct CMessage {
   // proto tree.  Every Python CMessage holds a reference to it in
   // order to keep it alive as long as there's a Python object that
   // references any part of the tree.
-  shared_ptr<Message> owner;
+
+  typedef ThreadUnsafeSharedPtr<Message> OwnerRef;
+  OwnerRef owner;
 
   // Weak reference to a parent CMessage object. This is NULL for any top-level
   // message and is set for any child message (i.e. a child submessage or a
@@ -101,25 +97,24 @@ typedef struct CMessage {
   // made writable, at which point this field is set to false.
   bool read_only;
 
-  // A reference to a Python dictionary containing CMessage,
+  // A mapping indexed by field, containing CMessage,
   // RepeatedCompositeContainer, and RepeatedScalarContainer
   // objects. Used as a cache to make sure we don't have to make a
   // Python wrapper for the C++ Message objects on every access, or
   // deal with the synchronization nightmare that could create.
-  PyObject* composite_fields;
+  // Also cache extension fields.
+  // The FieldDescriptor is owned by the message's pool; PyObject references
+  // are owned.
+  typedef std::unordered_map<const FieldDescriptor*, PyObject*>
+      CompositeFieldsMap;
+  CompositeFieldsMap* composite_fields;
 
-  // A reference to the dictionary containing the message's extensions.
-  // Similar to composite_fields, acting as a cache, but also contains the
-  // required extension dict logic.
-  ExtensionDict* extensions;
+  // A reference to PyUnknownFields.
+  PyObject* unknown_field_set;
 
   // Implements the "weakref" protocol for this object.
   PyObject* weakreflist;
 } CMessage;
-
-extern PyTypeObject CMessageClass_Type;
-extern PyTypeObject CMessage_Type;
-
 
 // The (meta) type of all Messages classes.
 // It allows us to cache some C++ pointers in the class object itself, they are
@@ -147,6 +142,8 @@ struct CMessageClass {
   }
 };
 
+extern PyTypeObject* CMessageClass_Type;
+extern PyTypeObject* CMessage_Type;
 
 namespace cmessage {
 
@@ -169,13 +166,13 @@ PyObject* InternalGetSubMessage(
 // Deletes a range of C++ submessages in a repeated field (following a
 // removal in a RepeatedCompositeContainer).
 //
-// Releases messages to the provided cmessage_list if it is not NULL rather
+// Releases submessages to the provided cmessage_list if it is not NULL rather
 // than just removing them from the underlying proto. This cmessage_list must
 // have a CMessage for each underlying submessage. The CMessages referred to
 // by slice will be removed from cmessage_list by this function.
 //
 // Corresponds to reflection api method RemoveLast.
-int InternalDeleteRepeatedField(CMessage* self,
+int InternalDeleteRepeatedField(Message* message,
                                 const FieldDescriptor* field_descriptor,
                                 PyObject* slice, PyObject* cmessage_list);
 
@@ -240,22 +237,20 @@ PyObject* MergeFrom(CMessage* self, PyObject* arg);
 // has been registered with the same field number on this class.
 PyObject* RegisterExtension(PyObject* cls, PyObject* extension_handle);
 
-// Retrieves an attribute named 'name' from CMessage 'self'. Returns
-// the attribute value on success, or NULL on failure.
-//
-// Returns a new reference.
-PyObject* GetAttr(CMessage* self, PyObject* name);
-
-// Set the value of the attribute named 'name', for CMessage 'self',
-// to the value 'value'. Returns -1 on failure.
-int SetAttr(CMessage* self, PyObject* name, PyObject* value);
+// Get a field from a message.
+PyObject* GetFieldValue(CMessage* self,
+                        const FieldDescriptor* field_descriptor);
+// Sets the value of a scalar field in a message.
+// On error, return -1 with an extension set.
+int SetFieldValue(CMessage* self, const FieldDescriptor* field_descriptor,
+                  PyObject* value);
 
 PyObject* FindInitializationErrors(CMessage* self);
 
 // Set the owner field of self and any children of self, recursively.
 // Used when self is being released and thus has a new owner (the
 // released Message.)
-int SetOwner(CMessage* self, const shared_ptr<Message>& new_owner);
+int SetOwner(CMessage* self, const CMessage::OwnerRef& new_owner);
 
 int AssureWritable(CMessage* self);
 
@@ -336,7 +331,8 @@ bool CheckAndSetString(
     const Reflection* reflection,
     bool append,
     int index);
-PyObject* ToStringObject(const FieldDescriptor* descriptor, string value);
+PyObject* ToStringObject(const FieldDescriptor* descriptor,
+                         const std::string& value);
 
 // Check if the passed field descriptor belongs to the given message.
 // If not, return false and set a Python exception (a KeyError)
@@ -345,10 +341,22 @@ bool CheckFieldBelongsToMessage(const FieldDescriptor* field_descriptor,
 
 extern PyObject* PickleError_class;
 
+const Message* PyMessage_GetMessagePointer(PyObject* msg);
+Message* PyMessage_GetMutableMessagePointer(PyObject* msg);
+
 bool InitProto2MessageModule(PyObject *m);
+
+#if LANG_CXX11
+// These are referenced by repeated_scalar_container, and must
+// be explicitly instantiated.
+extern template bool CheckAndGetInteger<int32>(PyObject*, int32*);
+extern template bool CheckAndGetInteger<int64>(PyObject*, int64*);
+extern template bool CheckAndGetInteger<uint32>(PyObject*, uint32*);
+extern template bool CheckAndGetInteger<uint64>(PyObject*, uint64*);
+#endif
 
 }  // namespace python
 }  // namespace protobuf
-
 }  // namespace google
+
 #endif  // GOOGLE_PROTOBUF_PYTHON_CPP_MESSAGE_H__

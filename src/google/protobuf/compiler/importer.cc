@@ -32,7 +32,6 @@
 //  Based on original Protocol Buffers design by
 //  Sanjay Ghemawat, Jeff Dean, and others.
 
-
 #ifdef _MSC_VER
 #include <direct.h>
 #else
@@ -45,9 +44,6 @@
 
 #include <algorithm>
 #include <memory>
-#ifndef _SHARED_PTR_H
-#include <google/protobuf/stubs/shared_ptr.h>
-#endif
 
 #include <google/protobuf/compiler/importer.h>
 
@@ -55,6 +51,8 @@
 #include <google/protobuf/io/tokenizer.h>
 #include <google/protobuf/io/zero_copy_stream_impl.h>
 #include <google/protobuf/stubs/strutil.h>
+
+
 #include <google/protobuf/stubs/io_win32.h>
 
 #ifdef _WIN32
@@ -105,7 +103,7 @@ class SourceTreeDescriptorDatabase::SingleFileErrorCollector
   bool had_errors() { return had_errors_; }
 
   // implements ErrorCollector ---------------------------------------
-  void AddError(int line, int column, const string& message) {
+  void AddError(int line, int column, const string& message) override {
     if (multi_file_error_collector_ != NULL) {
       multi_file_error_collector_->AddError(filename_, line, column, message);
     }
@@ -122,17 +120,30 @@ class SourceTreeDescriptorDatabase::SingleFileErrorCollector
 
 SourceTreeDescriptorDatabase::SourceTreeDescriptorDatabase(
     SourceTree* source_tree)
-  : source_tree_(source_tree),
-    error_collector_(NULL),
-    using_validation_error_collector_(false),
-    validation_error_collector_(this) {}
+    : source_tree_(source_tree),
+      fallback_database_(nullptr),
+      error_collector_(nullptr),
+      using_validation_error_collector_(false),
+      validation_error_collector_(this) {}
+
+SourceTreeDescriptorDatabase::SourceTreeDescriptorDatabase(
+    SourceTree* source_tree, DescriptorDatabase* fallback_database)
+    : source_tree_(source_tree),
+      fallback_database_(fallback_database),
+      error_collector_(nullptr),
+      using_validation_error_collector_(false),
+      validation_error_collector_(this) {}
 
 SourceTreeDescriptorDatabase::~SourceTreeDescriptorDatabase() {}
 
 bool SourceTreeDescriptorDatabase::FindFileByName(
     const string& filename, FileDescriptorProto* output) {
-  google::protobuf::scoped_ptr<io::ZeroCopyInputStream> input(source_tree_->Open(filename));
+  std::unique_ptr<io::ZeroCopyInputStream> input(source_tree_->Open(filename));
   if (input == NULL) {
+    if (fallback_database_ != nullptr &&
+        fallback_database_->FindFileByName(filename, output)) {
+      return true;
+    }
     if (error_collector_ != NULL) {
       error_collector_->AddError(filename, -1, 0,
                                  source_tree_->GetLastErrorMessage());
@@ -420,7 +431,7 @@ DiskSourceTree::DiskFileToVirtualFile(
   // Verify that we can open the file.  Note that this also has the side-effect
   // of verifying that we are not canonicalizing away any non-existent
   // directories.
-  google::protobuf::scoped_ptr<io::ZeroCopyInputStream> stream(OpenDiskFile(disk_file));
+  std::unique_ptr<io::ZeroCopyInputStream> stream(OpenDiskFile(disk_file));
   if (stream == NULL) {
     return CANNOT_OPEN;
   }
@@ -430,7 +441,7 @@ DiskSourceTree::DiskFileToVirtualFile(
 
 bool DiskSourceTree::VirtualFileToDiskFile(const string& virtual_file,
                                            string* disk_file) {
-  google::protobuf::scoped_ptr<io::ZeroCopyInputStream> stream(
+  std::unique_ptr<io::ZeroCopyInputStream> stream(
       OpenVirtualFile(virtual_file, disk_file));
   return stream != NULL;
 }

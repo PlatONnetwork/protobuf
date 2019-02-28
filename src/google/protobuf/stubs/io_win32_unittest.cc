@@ -48,7 +48,6 @@
 #include <windows.h>
 
 #include <google/protobuf/stubs/io_win32.h>
-#include <google/protobuf/stubs/scoped_ptr.h>
 #include <gtest/gtest.h>
 
 #include <memory>
@@ -64,17 +63,17 @@ namespace {
 const char kUtf8Text[] = {
     'h', 'i', ' ',
     // utf-8: 11010000 10011111, utf-16: 100 0001 1111 = 0x041F
-    0xd0, 0x9f,
+    static_cast<char>(0xd0), static_cast<char>(0x9f),
     // utf-8: 11010001 10000000, utf-16: 100 0100 0000 = 0x0440
-    0xd1, 0x80,
+    static_cast<char>(0xd1), static_cast<char>(0x80),
     // utf-8: 11010000 10111000, utf-16: 100 0011 1000 = 0x0438
-    0xd0, 0xb8,
+    static_cast<char>(0xd0), static_cast<char>(0xb8),
     // utf-8: 11010000 10110010, utf-16: 100 0011 0010 = 0x0432
-    0xd0, 0xb2,
+    static_cast<char>(0xd0), static_cast<char>(0xb2),
     // utf-8: 11010000 10110101, utf-16: 100 0011 0101 = 0x0435
-    0xd0, 0xb5,
+    static_cast<char>(0xd0), static_cast<char>(0xb5),
     // utf-8: 11010001 10000010, utf-16: 100 0100 0010 = 0x0442
-    0xd1, 0x82, 0
+    static_cast<char>(0xd1), static_cast<char>(0x82), 0
 };
 
 const wchar_t kUtf16Text[] = {
@@ -113,9 +112,9 @@ void StripTrailingSlashes(string* str) {
 }
 
 bool GetEnvVarAsUtf8(const WCHAR* name, string* result) {
-  DWORD size = ::GetEnvironmentVariableW(name, NULL, 0);
+  DWORD size = ::GetEnvironmentVariableW(name, nullptr, 0);
   if (size > 0 && GetLastError() != ERROR_ENVVAR_NOT_FOUND) {
-    scoped_array<WCHAR> wcs(new WCHAR[size]);
+    std::unique_ptr<WCHAR[]> wcs(new WCHAR[size]);
     ::GetEnvironmentVariableW(name, wcs.get(), size);
     // GetEnvironmentVariableA retrieves an Active-Code-Page-encoded text which
     // we'd first need to convert to UTF-16 then to UTF-8, because there seems
@@ -129,9 +128,9 @@ bool GetEnvVarAsUtf8(const WCHAR* name, string* result) {
 }
 
 bool GetCwdAsUtf8(string* result) {
-  DWORD size = ::GetCurrentDirectoryW(0, NULL);
+  DWORD size = ::GetCurrentDirectoryW(0, nullptr);
   if (size > 0) {
-    scoped_array<WCHAR> wcs(new WCHAR[size]);
+    std::unique_ptr<WCHAR[]> wcs(new WCHAR[size]);
     ::GetCurrentDirectoryW(size, wcs.get());
     // GetCurrentDirectoryA retrieves an Active-Code-Page-encoded text which
     // we'd first need to convert to UTF-16 then to UTF-8, because there seems
@@ -202,7 +201,7 @@ bool IoWin32Test::CreateAllUnder(wstring path) {
   if (path.find(L"\\\\?\\") != 0) {
     path = wstring(L"\\\\?\\") + path;
   }
-  if (::CreateDirectoryW(path.c_str(), NULL) ||
+  if (::CreateDirectoryW(path.c_str(), nullptr) ||
       GetLastError() == ERROR_ALREADY_EXISTS ||
       GetLastError() == ERROR_ACCESS_DENIED) {
     return true;
@@ -211,7 +210,7 @@ bool IoWin32Test::CreateAllUnder(wstring path) {
     size_t pos = path.find_last_of(L'\\');
     if (pos != wstring::npos) {
       wstring parent(path, 0, pos);
-      if (CreateAllUnder(parent) && CreateDirectoryW(path.c_str(), NULL)) {
+      if (CreateAllUnder(parent) && CreateDirectoryW(path.c_str(), nullptr)) {
         return true;
       }
     }
@@ -353,8 +352,8 @@ TEST_F(IoWin32Test, MkdirTestNonAscii) {
 
   // Create a non-ASCII path.
   // Ensure that we can create the directory using SetCurrentDirectoryW.
-  EXPECT_TRUE(CreateDirectoryW((wtest_tmpdir + L"\\1").c_str(), NULL));
-  EXPECT_TRUE(CreateDirectoryW((wtest_tmpdir + L"\\1\\" + kUtf16Text).c_str(), NULL));
+  EXPECT_TRUE(CreateDirectoryW((wtest_tmpdir + L"\\1").c_str(), nullptr));
+  EXPECT_TRUE(CreateDirectoryW((wtest_tmpdir + L"\\1\\" + kUtf16Text).c_str(), nullptr));
   // Ensure that we can create a very similarly named directory using mkdir.
   // We don't attemp to delete and recreate the same directory, because on
   // Windows, deleting files and directories seems to be asynchronous.
@@ -387,7 +386,7 @@ TEST_F(IoWin32Test, ChdirTestNonAscii) {
   wstring wNonAscii(wtest_tmpdir + L"\\" + kUtf16Text);
   string nonAscii;
   EXPECT_TRUE(strings::wcs_to_utf8(wNonAscii.c_str(), &nonAscii));
-  EXPECT_TRUE(CreateDirectoryW(wNonAscii.c_str(), NULL));
+  EXPECT_TRUE(CreateDirectoryW(wNonAscii.c_str(), nullptr));
   WCHAR cwd[MAX_PATH];
   EXPECT_TRUE(GetCurrentDirectoryW(MAX_PATH, cwd));
   // Ensure that we can cd into the path using SetCurrentDirectoryW.
@@ -401,8 +400,8 @@ TEST_F(IoWin32Test, ChdirTestNonAscii) {
 }
 
 TEST_F(IoWin32Test, AsWindowsPathTest) {
-  DWORD size = GetCurrentDirectoryW(0, NULL);
-  scoped_array<wchar_t> cwd_str(new wchar_t[size]);
+  DWORD size = GetCurrentDirectoryW(0, nullptr);
+  std::unique_ptr<wchar_t[]> cwd_str(new wchar_t[size]);
   EXPECT_GT(GetCurrentDirectoryW(size, cwd_str.get()), 0);
   wstring cwd = wstring(L"\\\\?\\") + cwd_str.get();
 

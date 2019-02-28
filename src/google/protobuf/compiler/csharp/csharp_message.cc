@@ -42,14 +42,13 @@
 #include <google/protobuf/wire_format.h>
 #include <google/protobuf/wire_format_lite.h>
 
+#include <google/protobuf/compiler/csharp/csharp_options.h>
 #include <google/protobuf/compiler/csharp/csharp_doc_comment.h>
 #include <google/protobuf/compiler/csharp/csharp_enum.h>
 #include <google/protobuf/compiler/csharp/csharp_field_base.h>
 #include <google/protobuf/compiler/csharp/csharp_helpers.h>
 #include <google/protobuf/compiler/csharp/csharp_message.h>
 #include <google/protobuf/compiler/csharp/csharp_names.h>
-
-using google::protobuf::internal::scoped_ptr;
 
 namespace google {
 namespace protobuf {
@@ -63,20 +62,27 @@ bool CompareFieldNumbers(const FieldDescriptor* d1, const FieldDescriptor* d2) {
 MessageGenerator::MessageGenerator(const Descriptor* descriptor,
                                    const Options* options)
     : SourceGeneratorBase(descriptor->file(), options),
-      descriptor_(descriptor) {
-
-  // sorted field names
-  for (int i = 0; i < descriptor_->field_count(); i++) {
-    field_names_.push_back(descriptor_->field(i)->name());
-  }
-  std::sort(field_names_.begin(), field_names_.end());
-
+      descriptor_(descriptor),
+      has_bit_field_count_(0) {
   // fields by number
   for (int i = 0; i < descriptor_->field_count(); i++) {
     fields_by_number_.push_back(descriptor_->field(i));
   }
   std::sort(fields_by_number_.begin(), fields_by_number_.end(),
             CompareFieldNumbers);
+
+  if (IsProto2(descriptor_->file())) {
+    int primitiveCount = 0;
+    for (int i = 0; i < descriptor_->field_count(); i++) {
+      const FieldDescriptor* field = descriptor_->field(i);
+      if (!IsNullable(field)) {
+        primitiveCount++;
+        if (has_bit_field_count_ == 0 || (primitiveCount % 32) == 0) {
+          has_bit_field_count_++;
+        }
+      }
+    }
+  }
 }
 
 MessageGenerator::~MessageGenerator() {
@@ -90,10 +96,6 @@ std::string MessageGenerator::full_class_name() {
   return GetClassName(descriptor_);
 }
 
-const std::vector<std::string>& MessageGenerator::field_names() {
-  return field_names_;
-}
-
 const std::vector<const FieldDescriptor*>& MessageGenerator::fields_by_number() {
   return fields_by_number_;
 }
@@ -104,6 +106,12 @@ void MessageGenerator::AddDeprecatedFlag(io::Printer* printer) {
   }
 }
 
+void MessageGenerator::AddSerializableAttribute(io::Printer* printer) {
+  if (this->options()->serializable) {
+    printer->Print("[global::System.SerializableAttribute]\n");
+  }
+}
+
 void MessageGenerator::Generate(io::Printer* printer) {
   std::map<string, string> vars;
   vars["class_name"] = class_name();
@@ -111,6 +119,7 @@ void MessageGenerator::Generate(io::Printer* printer) {
 
   WriteMessageDocComment(printer, descriptor_);
   AddDeprecatedFlag(printer);
+  AddSerializableAttribute(printer);
 
   printer->Print(
     vars,
@@ -124,6 +133,12 @@ void MessageGenerator::Generate(io::Printer* printer) {
 
   printer->Print(
       "private pb::UnknownFieldSet _unknownFields;\n");
+
+  for (int i = 0; i < has_bit_field_count_; i++) {
+    // don't use arrays since all arrays are heap allocated, saving allocations
+    // use ints instead of bytes since bytes lack bitwise operators, saving casts
+    printer->Print("private int _hasBits$i$;\n", "i", SimpleItoa(i));
+  }
 
   WriteGeneratedCodeAttributes(printer);
 
@@ -184,7 +199,7 @@ void MessageGenerator::Generate(io::Printer* printer) {
       "field_name", fieldDescriptor->name(),
       "field_constant_name", GetFieldConstantName(fieldDescriptor),
       "index", SimpleItoa(fieldDescriptor->number()));
-    scoped_ptr<FieldGeneratorBase> generator(
+    std::unique_ptr<FieldGeneratorBase> generator(
         CreateFieldGeneratorInternal(fieldDescriptor));
     generator->GenerateMembers(printer);
     printer->Print("\n");
@@ -290,10 +305,13 @@ void MessageGenerator::GenerateCloningCode(io::Printer* printer) {
     vars,
     "public $class_name$($class_name$ other) : this() {\n");
   printer->Indent();
+  for (int i = 0; i < has_bit_field_count_; i++) {
+    printer->Print("_hasBits$i$ = other._hasBits$i$;\n", "i", SimpleItoa(i));
+  }
   // Clone non-oneof fields first
   for (int i = 0; i < descriptor_->field_count(); i++) {
     if (!descriptor_->field(i)->containing_oneof()) {
-      scoped_ptr<FieldGeneratorBase> generator(
+      std::unique_ptr<FieldGeneratorBase> generator(
         CreateFieldGeneratorInternal(descriptor_->field(i)));
       generator->GenerateCloningCode(printer);
     }
@@ -307,7 +325,7 @@ void MessageGenerator::GenerateCloningCode(io::Printer* printer) {
     printer->Indent();
     for (int j = 0; j < descriptor_->oneof_decl(i)->field_count(); j++) {
       const FieldDescriptor* field = descriptor_->oneof_decl(i)->field(j);
-      scoped_ptr<FieldGeneratorBase> generator(CreateFieldGeneratorInternal(field));
+      std::unique_ptr<FieldGeneratorBase> generator(CreateFieldGeneratorInternal(field));
       vars["field_property_name"] = GetPropertyName(field);
       printer->Print(
           vars,
@@ -361,7 +379,7 @@ void MessageGenerator::GenerateFrameworkMethods(io::Printer* printer) {
         "  }\n");
     printer->Indent();
     for (int i = 0; i < descriptor_->field_count(); i++) {
-        scoped_ptr<FieldGeneratorBase> generator(
+      std::unique_ptr<FieldGeneratorBase> generator(
             CreateFieldGeneratorInternal(descriptor_->field(i)));
         generator->WriteEquals(printer);
     }
@@ -382,7 +400,7 @@ void MessageGenerator::GenerateFrameworkMethods(io::Printer* printer) {
         "  int hash = 1;\n");
     printer->Indent();
     for (int i = 0; i < descriptor_->field_count(); i++) {
-        scoped_ptr<FieldGeneratorBase> generator(
+      std::unique_ptr<FieldGeneratorBase> generator(
             CreateFieldGeneratorInternal(descriptor_->field(i)));
         generator->WriteHash(printer);
     }
@@ -413,7 +431,7 @@ void MessageGenerator::GenerateMessageSerializationMethods(io::Printer* printer)
 
   // Serialize all the fields
   for (int i = 0; i < fields_by_number().size(); i++) {
-    scoped_ptr<FieldGeneratorBase> generator(
+    std::unique_ptr<FieldGeneratorBase> generator(
       CreateFieldGeneratorInternal(fields_by_number()[i]));
     generator->GenerateSerializationCode(printer);
   }
@@ -435,7 +453,7 @@ void MessageGenerator::GenerateMessageSerializationMethods(io::Printer* printer)
   printer->Indent();
   printer->Print("int size = 0;\n");
   for (int i = 0; i < descriptor_->field_count(); i++) {
-    scoped_ptr<FieldGeneratorBase> generator(
+    std::unique_ptr<FieldGeneratorBase> generator(
         CreateFieldGeneratorInternal(descriptor_->field(i)));
     generator->GenerateSerializedSizeCode(printer);
   }
@@ -469,7 +487,7 @@ void MessageGenerator::GenerateMergingMethods(io::Printer* printer) {
   // Merge non-oneof fields
   for (int i = 0; i < descriptor_->field_count(); i++) {
     if (!descriptor_->field(i)->containing_oneof()) {      
-      scoped_ptr<FieldGeneratorBase> generator(
+      std::unique_ptr<FieldGeneratorBase> generator(
           CreateFieldGeneratorInternal(descriptor_->field(i)));
       generator->GenerateMergingCode(printer);
     }
@@ -487,7 +505,7 @@ void MessageGenerator::GenerateMergingMethods(io::Printer* printer) {
         vars,
         "case $property_name$OneofCase.$field_property_name$:\n");
       printer->Indent();
-      scoped_ptr<FieldGeneratorBase> generator(CreateFieldGeneratorInternal(field));
+      std::unique_ptr<FieldGeneratorBase> generator(CreateFieldGeneratorInternal(field));
       generator->GenerateMergingCode(printer);
       printer->Print("break;\n");
       printer->Outdent();
@@ -521,7 +539,9 @@ void MessageGenerator::GenerateMergingMethods(io::Printer* printer) {
   } else {
     printer->Print(
       "default:\n"
-      "  _unknownFields = pb::UnknownFieldSet.MergeFieldFrom(_unknownFields, input);\n"
+      "  if (!pb::UnknownFieldSet.MergeFieldFrom(ref _unknownFields, input)) {\n"
+      "    return;\n"
+      "  }\n"
       "  break;\n");
   }
   for (int i = 0; i < fields_by_number().size(); i++) {
@@ -546,7 +566,7 @@ void MessageGenerator::GenerateMergingMethods(io::Printer* printer) {
 
     printer->Print("case $tag$: {\n", "tag", SimpleItoa(tag));
     printer->Indent();
-    scoped_ptr<FieldGeneratorBase> generator(
+    std::unique_ptr<FieldGeneratorBase> generator(
         CreateFieldGeneratorInternal(field));
     generator->GenerateParsingCode(printer);
     printer->Print("break;\n");
@@ -561,19 +581,29 @@ void MessageGenerator::GenerateMergingMethods(io::Printer* printer) {
   printer->Print("}\n\n"); // method
 }
 
-int MessageGenerator::GetFieldOrdinal(const FieldDescriptor* descriptor) {
-  for (int i = 0; i < field_names().size(); i++) {
-    if (field_names()[i] == descriptor->name()) {
-      return i;
+// it's a waste of space to track presence for all values, so we only track them if they're not nullable
+int MessageGenerator::GetPresenceIndex(const FieldDescriptor* descriptor) {
+  if (IsNullable(descriptor) || !IsProto2(descriptor_->file())) {
+    return -1;
+  }
+
+  int index = 0;
+  for (int i = 0; i < fields_by_number().size(); i++) {
+    const FieldDescriptor* field = fields_by_number()[i];
+    if (field == descriptor) {
+      return index;
+    }
+    if (!IsNullable(field)) {
+      index++;
     }
   }
-  GOOGLE_LOG(DFATAL)<< "Could not find ordinal for field " << descriptor->name();
+  GOOGLE_LOG(DFATAL)<< "Could not find presence index for field " << descriptor->name();
   return -1;
 }
 
 FieldGeneratorBase* MessageGenerator::CreateFieldGeneratorInternal(
     const FieldDescriptor* descriptor) {
-  return CreateFieldGenerator(descriptor, GetFieldOrdinal(descriptor), this->options());
+  return CreateFieldGenerator(descriptor, GetPresenceIndex(descriptor), this->options());
 }
 
 }  // namespace csharp

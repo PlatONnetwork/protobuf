@@ -38,28 +38,30 @@
 #include <stdlib.h>
 #include <limits>
 #include <memory>
-#ifndef _SHARED_PTR_H
-#include <google/protobuf/stubs/shared_ptr.h>
-#endif
 
 #include <google/protobuf/stubs/logging.h>
 #include <google/protobuf/stubs/common.h>
 #include <google/protobuf/stubs/logging.h>
 #include <google/protobuf/testing/file.h>
 #include <google/protobuf/testing/file.h>
+#include <google/protobuf/map_unittest.pb.h>
 #include <google/protobuf/test_util.h>
+#include <google/protobuf/test_util2.h>
 #include <google/protobuf/unittest.pb.h>
 #include <google/protobuf/unittest_mset.pb.h>
 #include <google/protobuf/unittest_mset_wire_format.pb.h>
 #include <google/protobuf/io/tokenizer.h>
 #include <google/protobuf/io/zero_copy_stream_impl.h>
-
 #include <google/protobuf/stubs/strutil.h>
+
+
 #include <google/protobuf/stubs/substitute.h>
 #include <google/protobuf/testing/googletest.h>
 #include <gtest/gtest.h>
 #include <google/protobuf/stubs/mathlimits.h>
 
+
+#include <google/protobuf/port_def.inc>
 
 namespace google {
 namespace protobuf {
@@ -81,10 +83,11 @@ class TextFormatTest : public testing::Test {
  public:
   static void SetUpTestCase() {
     GOOGLE_CHECK_OK(File::GetContents(
-        TestSourceDir() +
-            "/google/protobuf/"
-            "testdata/text_format_unittest_data_oneof_implemented.txt",
+        TestUtil::GetTestDataPath(
+            "net/proto2/internal/"
+            "testdata/text_format_unittest_data_oneof_implemented.txt"),
         &static_proto_debug_string_, true));
+    CleanStringLineEndings(&static_proto_debug_string_, false);
   }
 
   TextFormatTest() : proto_debug_string_(static_proto_debug_string_) {}
@@ -102,10 +105,11 @@ string TextFormatTest::static_proto_debug_string_;
 class TextFormatExtensionsTest : public testing::Test {
  public:
   static void SetUpTestCase() {
-    GOOGLE_CHECK_OK(File::GetContents(TestSourceDir() +
-                                   "/google/protobuf/testdata/"
-                                   "text_format_unittest_extensions_data.txt",
-                               &static_proto_debug_string_, true));
+    GOOGLE_CHECK_OK(File::GetContents(
+        TestUtil::GetTestDataPath("net/proto2/internal/testdata/"
+                                  "text_format_unittest_extensions_data.txt"),
+        &static_proto_debug_string_, true));
+    CleanStringLineEndings(&static_proto_debug_string_, false);
   }
 
   TextFormatExtensionsTest()
@@ -474,20 +478,21 @@ TEST_F(TextFormatTest, ErrorCasesRegisteringFieldValuePrinterShouldFail) {
   // NULL printer.
   EXPECT_FALSE(printer.RegisterFieldValuePrinter(
       message.GetDescriptor()->FindFieldByName("optional_int32"),
-      static_cast<const TextFormat::FieldValuePrinter*>(NULL)));
+      static_cast<const TextFormat::FieldValuePrinter*>(nullptr)));
   EXPECT_FALSE(printer.RegisterFieldValuePrinter(
       message.GetDescriptor()->FindFieldByName("optional_int32"),
-      static_cast<const TextFormat::FastFieldValuePrinter*>(NULL)));
+      static_cast<const TextFormat::FastFieldValuePrinter*>(nullptr)));
   // Because registration fails, the ownership of this printer is never taken.
   TextFormat::FieldValuePrinter my_field_printer;
   // NULL field
-  EXPECT_FALSE(printer.RegisterFieldValuePrinter(NULL, &my_field_printer));
+  EXPECT_FALSE(printer.RegisterFieldValuePrinter(nullptr, &my_field_printer));
 }
 
 class CustomMessageFieldValuePrinter : public TextFormat::FieldValuePrinter {
  public:
   virtual string PrintInt32(int32 v) const {
-    return StrCat(FieldValuePrinter::PrintInt32(v), "  # x", strings::Hex(v));
+    return StrCat(FieldValuePrinter::PrintInt32(v), "  # x",
+                        strings::Hex(v));
   }
 
   virtual string PrintMessageStart(const Message& message,
@@ -497,8 +502,8 @@ class CustomMessageFieldValuePrinter : public TextFormat::FieldValuePrinter {
     if (single_line_mode) {
       return " { ";
     }
-    return StrCat(
-        " {  # ", message.GetDescriptor()->name(), ": ", field_index, "\n");
+    return StrCat(" {  # ", message.GetDescriptor()->name(), ": ",
+                        field_index, "\n");
   }
 };
 
@@ -562,6 +567,148 @@ TEST_F(TextFormatTest, CustomPrinterForMultilineComments) {
       "  d: 42\n"
       "}\n",
       text);
+}
+
+// Achieve effects similar to SetUseShortRepeatedPrimitives for messages, using
+// RegisterFieldValuePrinter. Use this to test the version of PrintFieldName
+// that accepts repeated field index and count.
+class CompactRepeatedFieldPrinter : public TextFormat::FastFieldValuePrinter {
+ public:
+  void PrintFieldName(const Message& message, int field_index, int field_count,
+                      const Reflection* reflection,
+                      const FieldDescriptor* field,
+                      TextFormat::BaseTextGenerator* generator) const override {
+    if (field_index == 0 || field_index == -1) {
+      generator->PrintString(field->name());
+    }
+  }
+  // To prevent compiler complaining about Woverloaded-virtual
+  void PrintFieldName(const Message& message, const Reflection* reflection,
+                      const FieldDescriptor* field,
+                      TextFormat::BaseTextGenerator* generator) const override {
+  }
+  void PrintMessageStart(
+      const Message& message, int field_index, int field_count,
+      bool single_line_mode,
+      TextFormat::BaseTextGenerator* generator) const override {
+    if (field_index == 0 || field_index == -1) {
+      if (single_line_mode) {
+        generator->PrintLiteral(" { ");
+      } else {
+        generator->PrintLiteral(" {\n");
+      }
+    }
+  }
+  void PrintMessageEnd(
+      const Message& message, int field_index, int field_count,
+      bool single_line_mode,
+      TextFormat::BaseTextGenerator* generator) const override {
+    if (field_index == field_count - 1 || field_index == -1) {
+      if (single_line_mode) {
+        generator->PrintLiteral("} ");
+      } else {
+        generator->PrintLiteral("}\n");
+      }
+    }
+  }
+};
+
+TEST_F(TextFormatTest, CompactRepeatedFieldPrinter) {
+  TextFormat::Printer printer;
+  ASSERT_TRUE(printer.RegisterFieldValuePrinter(
+      unittest::TestAllTypes::default_instance()
+          .descriptor()
+          ->FindFieldByNumber(
+              unittest::TestAllTypes::kRepeatedNestedMessageFieldNumber),
+      new CompactRepeatedFieldPrinter));
+
+  protobuf_unittest::TestAllTypes message;
+  message.add_repeated_nested_message()->set_bb(1);
+  message.add_repeated_nested_message()->set_bb(2);
+  message.add_repeated_nested_message()->set_bb(3);
+
+  string text;
+  ASSERT_TRUE(printer.PrintToString(message, &text));
+  EXPECT_EQ(
+      "repeated_nested_message {\n"
+      "  bb: 1\n"
+      "  bb: 2\n"
+      "  bb: 3\n"
+      "}\n",
+      text);
+}
+
+// Print strings into multiple line, with indention. Use this to test
+// BaseTextGenerator::Indent and BaseTextGenerator::Outdent.
+class MultilineStringPrinter : public TextFormat::FastFieldValuePrinter {
+ public:
+  void PrintString(const string& val,
+                   TextFormat::BaseTextGenerator* generator) const override {
+    generator->Indent();
+    int last_pos = 0;
+    int newline_pos = val.find('\n');
+    while (newline_pos != string::npos) {
+      generator->PrintLiteral("\n");
+      TextFormat::FastFieldValuePrinter::PrintString(
+          val.substr(last_pos, newline_pos + 1 - last_pos), generator);
+      last_pos = newline_pos + 1;
+      newline_pos = val.find('\n', last_pos);
+    }
+    if (last_pos < val.size()) {
+      generator->PrintLiteral("\n");
+      TextFormat::FastFieldValuePrinter::PrintString(val.substr(last_pos),
+                                                     generator);
+    }
+    generator->Outdent();
+  }
+};
+
+TEST_F(TextFormatTest, MultilineStringPrinter) {
+  TextFormat::Printer printer;
+  ASSERT_TRUE(printer.RegisterFieldValuePrinter(
+      unittest::TestAllTypes::default_instance()
+          .descriptor()
+          ->FindFieldByNumber(
+              unittest::TestAllTypes::kOptionalStringFieldNumber),
+      new MultilineStringPrinter));
+
+  protobuf_unittest::TestAllTypes message;
+  message.set_optional_string("first line\nsecond line\nthird line");
+
+  string text;
+  ASSERT_TRUE(printer.PrintToString(message, &text));
+  EXPECT_EQ(
+      "optional_string: \n"
+      "  \"first line\\n\"\n"
+      "  \"second line\\n\"\n"
+      "  \"third line\"\n",
+      text);
+}
+
+class CustomNestedMessagePrinter : public TextFormat::MessagePrinter {
+ public:
+  CustomNestedMessagePrinter() {}
+  ~CustomNestedMessagePrinter() override {}
+  void Print(const Message& message, bool single_line_mode,
+             TextFormat::BaseTextGenerator* generator) const override {
+    generator->PrintLiteral("custom");
+  }
+};
+
+TEST_F(TextFormatTest, CustomMessagePrinter) {
+  TextFormat::Printer printer;
+  printer.RegisterMessagePrinter(
+      unittest::TestAllTypes::NestedMessage::default_instance().descriptor(),
+      new CustomNestedMessagePrinter);
+
+  unittest::TestAllTypes message;
+  string text;
+  EXPECT_TRUE(printer.PrintToString(message, &text));
+  EXPECT_EQ("", text);
+
+  message.mutable_optional_nested_message()->set_bb(1);
+  EXPECT_TRUE(printer.PrintToString(message, &text));
+  EXPECT_EQ("optional_nested_message {\n  custom}\n", text);
 }
 
 TEST_F(TextFormatTest, ParseBasic) {
@@ -820,8 +967,8 @@ TEST_F(TextFormatTest, PrintExotic) {
   //   9223372036854775808 is outside the range of int64.  However, it is not
   //   outside the range of uint64.  Confusingly, this means that everything
   //   works if we make the literal unsigned, even though we are negating it.
-  message.add_repeated_int64(-GOOGLE_ULONGLONG(9223372036854775808));
-  message.add_repeated_uint64(GOOGLE_ULONGLONG(18446744073709551615));
+  message.add_repeated_int64(-PROTOBUF_ULONGLONG(9223372036854775808));
+  message.add_repeated_uint64(PROTOBUF_ULONGLONG(18446744073709551615));
   message.add_repeated_double(123.456);
   message.add_repeated_double(1.23e21);
   message.add_repeated_double(1.23e-18);
@@ -857,6 +1004,7 @@ TEST_F(TextFormatTest, PrintExotic) {
 TEST_F(TextFormatTest, PrintFloatPrecision) {
   unittest::TestAllTypes message;
 
+  message.add_repeated_float(1.0);
   message.add_repeated_float(1.2);
   message.add_repeated_float(1.23);
   message.add_repeated_float(1.234);
@@ -897,6 +1045,7 @@ TEST_F(TextFormatTest, PrintFloatPrecision) {
   message.add_repeated_double(1.23456789876543e100);
 
   EXPECT_EQ(
+    "repeated_float: 1\n"
     "repeated_float: 1.2\n"
     "repeated_float: 1.23\n"
     "repeated_float: 1.234\n"
@@ -992,15 +1141,18 @@ TEST_F(TextFormatTest, ParseExotic) {
   //   9223372036854775808 is outside the range of int64.  However, it is not
   //   outside the range of uint64.  Confusingly, this means that everything
   //   works if we make the literal unsigned, even though we are negating it.
-  EXPECT_EQ(-GOOGLE_ULONGLONG(9223372036854775808), message.repeated_int64(1));
+  EXPECT_EQ(-PROTOBUF_ULONGLONG(9223372036854775808),
+            message.repeated_int64(1));
 
   ASSERT_EQ(2, message.repeated_uint32_size());
   EXPECT_EQ(4294967295u, message.repeated_uint32(0));
   EXPECT_EQ(2147483648u, message.repeated_uint32(1));
 
   ASSERT_EQ(2, message.repeated_uint64_size());
-  EXPECT_EQ(GOOGLE_ULONGLONG(18446744073709551615), message.repeated_uint64(0));
-  EXPECT_EQ(GOOGLE_ULONGLONG(9223372036854775808), message.repeated_uint64(1));
+  EXPECT_EQ(PROTOBUF_ULONGLONG(18446744073709551615),
+            message.repeated_uint64(0));
+  EXPECT_EQ(PROTOBUF_ULONGLONG(9223372036854775808),
+            message.repeated_uint64(1));
 
   ASSERT_EQ(13, message.repeated_double_size());
   EXPECT_EQ(123.0     , message.repeated_double(0));
@@ -1031,29 +1183,93 @@ TEST_F(TextFormatTest, ParseExotic) {
 TEST_F(TextFormatTest, PrintFieldsInIndexOrder) {
   protobuf_unittest::TestFieldOrderings message;
   // Fields are listed in index order instead of field number.
-  message.set_my_string("Test String");   // Field number 11
+  message.set_my_string("str");           // Field number 11
   message.set_my_int(12345);              // Field number 1
   message.set_my_float(0.999);            // Field number 101
+  // Extensions are listed based on the order of extension number.
+  // Extension number 12.
+  message
+      .MutableExtension(
+          protobuf_unittest::TestExtensionOrderings2::test_ext_orderings2)
+      ->set_my_string("ext_str2");
+  // Extension number 13.
+  message
+      .MutableExtension(
+          protobuf_unittest::TestExtensionOrderings1::test_ext_orderings1)
+      ->set_my_string("ext_str1");
+  // Extension number 14.
+  message
+      .MutableExtension(protobuf_unittest::TestExtensionOrderings2::
+                            TestExtensionOrderings3::test_ext_orderings3)
+      ->set_my_string("ext_str3");
+  // Extension number 50.
+  *message.MutableExtension(protobuf_unittest::my_extension_string) = "ext_str0";
+
   TextFormat::Printer printer;
   string text;
 
   // By default, print in field number order.
+  // my_int: 12345
+  // my_string: "str"
+  // [protobuf_unittest.TestExtensionOrderings2.test_ext_orderings2] {
+  //   my_string: "ext_str2"
+  // }
+  // [protobuf_unittest.TestExtensionOrderings1.test_ext_orderings1] {
+  //   my_string: "ext_str1"
+  // }
+  // [protobuf_unittest.TestExtensionOrderings2.TestExtensionOrderings3.test_ext_orderings3]
+  // {
+  //   my_string: "ext_str3"
+  // }
+  // [protobuf_unittest.my_extension_string]: "ext_str0"
+  // my_float: 0.999
   printer.PrintToString(message, &text);
-  EXPECT_EQ("my_int: 12345\nmy_string: \"Test String\"\nmy_float: 0.999\n",
-            text);
+  EXPECT_EQ(
+      "my_int: 12345\nmy_string: "
+      "\"str\"\n[protobuf_unittest.TestExtensionOrderings2.test_ext_orderings2] "
+      "{\n  my_string: "
+      "\"ext_str2\"\n}\n[protobuf_unittest.TestExtensionOrderings1.test_ext_"
+      "orderings1] {\n  my_string: "
+      "\"ext_str1\"\n}\n[protobuf_unittest.TestExtensionOrderings2."
+      "TestExtensionOrderings3.test_ext_orderings3] {\n  my_string: "
+      "\"ext_str3\"\n}\n[protobuf_unittest.my_extension_string]: "
+      "\"ext_str0\"\nmy_float: 0.999\n",
+      text);
 
   // Print in index order.
+  // my_string: "str"
+  // my_int: 12345
+  // my_float: 0.999
+  // [protobuf_unittest.TestExtensionOrderings2.test_ext_orderings2] {
+  //   my_string: "ext_str2"
+  // }
+  // [protobuf_unittest.TestExtensionOrderings1.test_ext_orderings1] {
+  //   my_string: "ext_str1"
+  // }
+  // [protobuf_unittest.TestExtensionOrderings2.TestExtensionOrderings3.test_ext_orderings3]
+  // {
+  //   my_string: "ext_str3"
+  // }
+  // [protobuf_unittest.my_extension_string]: "ext_str0"
   printer.SetPrintMessageFieldsInIndexOrder(true);
   printer.PrintToString(message, &text);
-  EXPECT_EQ("my_string: \"Test String\"\nmy_int: 12345\nmy_float: 0.999\n",
-            text);
+  EXPECT_EQ(
+      "my_string: \"str\"\nmy_int: 12345\nmy_float: "
+      "0.999\n[protobuf_unittest.TestExtensionOrderings2.test_ext_orderings2] "
+      "{\n  my_string: "
+      "\"ext_str2\"\n}\n[protobuf_unittest.TestExtensionOrderings1.test_ext_"
+      "orderings1] {\n  my_string: "
+      "\"ext_str1\"\n}\n[protobuf_unittest.TestExtensionOrderings2."
+      "TestExtensionOrderings3.test_ext_orderings3] {\n  my_string: "
+      "\"ext_str3\"\n}\n[protobuf_unittest.my_extension_string]: \"ext_str0\"\n",
+      text);
 }
 
 class TextFormatParserTest : public testing::Test {
  protected:
   void ExpectFailure(const string& input, const string& message, int line,
                      int col) {
-    google::protobuf::scoped_ptr<unittest::TestAllTypes> proto(new unittest::TestAllTypes);
+    std::unique_ptr<unittest::TestAllTypes> proto(new unittest::TestAllTypes);
     ExpectFailure(input, message, line, col, proto.get());
   }
 
@@ -1069,8 +1285,9 @@ class TextFormatParserTest : public testing::Test {
     parser.RecordErrorsTo(&error_collector);
     EXPECT_EQ(expected_result, parser.ParseFromString(input, proto))
         << input << " -> " << proto->DebugString();
-    EXPECT_EQ(SimpleItoa(line) + ":" + SimpleItoa(col) + ": " + message + "\n",
-              error_collector.text_);
+    EXPECT_EQ(
+        StrCat(line) + ":" + StrCat(col) + ": " + message + "\n",
+        error_collector.text_);
   }
 
   void ExpectSuccessAndTree(const string& input, Message* proto,
@@ -1114,7 +1331,7 @@ class TextFormatParserTest : public testing::Test {
 };
 
 TEST_F(TextFormatParserTest, ParseInfoTreeBuilding) {
-  google::protobuf::scoped_ptr<unittest::TestAllTypes> message(new unittest::TestAllTypes);
+  std::unique_ptr<unittest::TestAllTypes> message(new unittest::TestAllTypes);
   const Descriptor* d = message->GetDescriptor();
 
   string stringData =
@@ -1179,7 +1396,7 @@ TEST_F(TextFormatParserTest, ParseInfoTreeBuilding) {
 }
 
 TEST_F(TextFormatParserTest, ParseFieldValueFromString) {
-  google::protobuf::scoped_ptr<unittest::TestAllTypes> message(new unittest::TestAllTypes);
+  std::unique_ptr<unittest::TestAllTypes> message(new unittest::TestAllTypes);
   const Descriptor* d = message->GetDescriptor();
 
 #define EXPECT_FIELD(name, value, valuestring) \
@@ -1293,7 +1510,7 @@ TEST_F(TextFormatParserTest, ParseFieldValueFromString) {
   // enum
   EXPECT_FIELD(nested_enum, unittest::TestAllTypes::BAR, "BAR");
   EXPECT_FIELD(nested_enum, unittest::TestAllTypes::BAZ,
-               SimpleItoa(unittest::TestAllTypes::BAZ));
+               StrCat(unittest::TestAllTypes::BAZ));
   EXPECT_INVALID(nested_enum, "FOOBAR");
 
   // message

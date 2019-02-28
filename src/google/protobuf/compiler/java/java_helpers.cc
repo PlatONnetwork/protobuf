@@ -33,8 +33,8 @@
 //  Sanjay Ghemawat, Jeff Dean, and others.
 
 #include <algorithm>
-#include <google/protobuf/stubs/hash.h>
 #include <limits>
+#include <unordered_set>
 #include <vector>
 
 #include <google/protobuf/stubs/stringprintf.h>
@@ -44,6 +44,7 @@
 #include <google/protobuf/wire_format.h>
 #include <google/protobuf/stubs/strutil.h>
 #include <google/protobuf/stubs/substitute.h>
+
 
 
 #include <google/protobuf/stubs/hash.h>  // for hash<T *>
@@ -75,6 +76,8 @@ const char* kForbiddenWordList[] = {
   "class",
 };
 
+const int kDefaultLookUpStartFieldNumber = 40;
+
 bool IsForbidden(const string& field_name) {
   for (int i = 0; i < GOOGLE_ARRAYSIZE(kForbiddenWordList); ++i) {
     if (field_name == kForbiddenWordList[i]) {
@@ -103,6 +106,20 @@ string FieldName(const FieldDescriptor* field) {
 }
 
 
+// Judge whether should use table or use look up.
+// Copied from com.google.protobuf.SchemaUtil.shouldUseTableSwitch
+bool ShouldUseTable(int lo, int hi, int number_of_fields) {
+  if (hi < kDefaultLookUpStartFieldNumber) {
+    return true;
+  }
+  int64 table_space_cost = (static_cast<int64>(hi) - lo + 1);  // words
+  int64 table_time_cost = 3;           // comparisons
+  int64 lookup_space_cost = 3 + 2 * static_cast<int64>(number_of_fields);
+  int64 lookup_time_cost = 3 + number_of_fields;
+  return table_space_cost + 3 * table_time_cost <=
+         lookup_space_cost + 3 * lookup_time_cost;
+}
+
 }  // namespace
 
 void PrintGeneratedAnnotation(io::Printer* printer, char delimiter,
@@ -117,6 +134,29 @@ void PrintGeneratedAnnotation(io::Printer* printer, char delimiter,
   ptemplate.push_back(delimiter);
   ptemplate.append("\")\n");
   printer->Print(ptemplate.c_str(), "annotation_file", annotation_file);
+}
+
+void PrintEnumVerifierLogic(io::Printer* printer,
+                            const FieldDescriptor* descriptor,
+                            const std::map<string, string>& variables,
+                            const char* var_name,
+                            const char* terminating_string,
+                            bool enforce_lite) {
+  std::string enum_verifier_string =
+      (descriptor->enum_type()->file()->options().optimize_for() ==
+       FileOptions::LITE_RUNTIME) || enforce_lite
+          ? StrCat(var_name, ".internalGetVerifier()")
+          : StrCat(
+              "new com.google.protobuf.Internal.EnumVerifier() {\n"
+              "        @java.lang.Override\n"
+              "        public boolean isInRange(int number) {\n"
+              "          return ", var_name, ".forNumber(number) != null;\n"
+              "        }\n"
+              "      }"
+      );
+  printer->Print(
+      variables,
+      StrCat(enum_verifier_string, terminating_string).c_str());
 }
 
 string UnderscoresToCamelCase(const string& input, bool cap_next_letter) {
@@ -162,6 +202,10 @@ string UnderscoresToCapitalizedCamelCase(const FieldDescriptor* field) {
   return UnderscoresToCamelCase(FieldName(field), true);
 }
 
+string CapitalizedFieldName(const FieldDescriptor* field) {
+  return UnderscoresToCapitalizedCamelCase(field);
+}
+
 string UnderscoresToCamelCase(const MethodDescriptor* method) {
   return UnderscoresToCamelCase(method->name(), false);
 }
@@ -205,6 +249,10 @@ string FileJavaPackage(const FileDescriptor* file, bool immutable) {
   }
 
   return result;
+}
+
+string FileJavaPackage(const FileDescriptor* file) {
+  return FileJavaPackage(file, true /* immutable */);
 }
 
 string JavaPackageToDir(string package_name) {
@@ -353,6 +401,10 @@ const char* PrimitiveTypeName(JavaType type) {
   return NULL;
 }
 
+const char* PrimitiveTypeName(const FieldDescriptor* descriptor) {
+  return PrimitiveTypeName(GetJavaType(descriptor));
+}
+
 const char* BoxedPrimitiveTypeName(JavaType type) {
   switch (type) {
     case JAVATYPE_INT    : return "java.lang.Integer";
@@ -371,6 +423,10 @@ const char* BoxedPrimitiveTypeName(JavaType type) {
 
   GOOGLE_LOG(FATAL) << "Can't get here.";
   return NULL;
+}
+
+const char* BoxedPrimitiveTypeName(const FieldDescriptor* descriptor) {
+  return BoxedPrimitiveTypeName(GetJavaType(descriptor));
 }
 
 
@@ -418,14 +474,14 @@ string DefaultValue(const FieldDescriptor* field, bool immutable,
   // of FieldDescriptor to call.
   switch (field->cpp_type()) {
     case FieldDescriptor::CPPTYPE_INT32:
-      return SimpleItoa(field->default_value_int32());
+      return StrCat(field->default_value_int32());
     case FieldDescriptor::CPPTYPE_UINT32:
       // Need to print as a signed int since Java has no unsigned.
-      return SimpleItoa(static_cast<int32>(field->default_value_uint32()));
+      return StrCat(static_cast<int32>(field->default_value_uint32()));
     case FieldDescriptor::CPPTYPE_INT64:
-      return SimpleItoa(field->default_value_int64()) + "L";
+      return StrCat(field->default_value_int64()) + "L";
     case FieldDescriptor::CPPTYPE_UINT64:
-      return SimpleItoa(static_cast<int64>(field->default_value_uint64())) +
+      return StrCat(static_cast<int64>(field->default_value_uint64())) +
              "L";
     case FieldDescriptor::CPPTYPE_DOUBLE: {
       double value = field->default_value_double();
@@ -568,7 +624,7 @@ const char* bit_masks[] = {
 
 string GetBitFieldName(int index) {
   string varName = "bitField";
-  varName += SimpleItoa(index);
+  varName += StrCat(index);
   varName += "_";
   return varName;
 }
@@ -584,7 +640,7 @@ string GenerateGetBitInternal(const string& prefix, int bitIndex) {
   int bitInVarIndex = bitIndex % 32;
 
   string mask = bit_masks[bitInVarIndex];
-  string result = "((" + varName + " & " + mask + ") == " + mask + ")";
+  string result = "((" + varName + " & " + mask + ") != 0)";
   return result;
 }
 
@@ -733,9 +789,8 @@ const FieldDescriptor** SortFieldsByNumber(const Descriptor* descriptor) {
 //
 // already_seen is used to avoid checking the same type multiple times
 // (and also to protect against recursion).
-bool HasRequiredFields(
-    const Descriptor* type,
-    hash_set<const Descriptor*>* already_seen) {
+bool HasRequiredFields(const Descriptor* type,
+                       std::unordered_set<const Descriptor*>* already_seen) {
   if (already_seen->count(type) > 0) {
     // The type is already in cache.  This means that either:
     // a. The type has no required fields.
@@ -770,7 +825,7 @@ bool HasRequiredFields(
 }
 
 bool HasRequiredFields(const Descriptor* type) {
-  hash_set<const Descriptor*> already_seen;
+  std::unordered_set<const Descriptor*> already_seen;
   return HasRequiredFields(type, &already_seen);
 }
 
@@ -915,6 +970,7 @@ void EscapeUtf16ToString(uint16 code, string* output) {
     output->append(StringPrintf("\\u%04x", code));
   }
 }
+
 }  // namespace java
 }  // namespace compiler
 }  // namespace protobuf

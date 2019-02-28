@@ -1,5 +1,5 @@
 // Adapted from the patch of kenton@google.com (Kenton Varda)
-// See https://github.com/google/protobuf/pull/710 for details.
+// See https://github.com/protocolbuffers/protobuf/pull/710 for details.
 
 #include <google/protobuf/util/delimited_message_util.h>
 
@@ -12,7 +12,7 @@ bool SerializeDelimitedToFileDescriptor(const MessageLite& message, int file_des
   return SerializeDelimitedToZeroCopyStream(message, &output);
 }
 
-bool SerializeDelimitedToOstream(const MessageLite& message, ostream* output) {
+bool SerializeDelimitedToOstream(const MessageLite& message, std::ostream* output) {
   {
     io::OstreamOutputStream zero_copy_output(output);
     if (!SerializeDelimitedToZeroCopyStream(message, &zero_copy_output)) return false;

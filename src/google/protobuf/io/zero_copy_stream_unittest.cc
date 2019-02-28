@@ -56,12 +56,10 @@
 #include <fcntl.h>
 #include <errno.h>
 #include <memory>
-#ifndef _SHARED_PTR_H
-#include <google/protobuf/stubs/shared_ptr.h>
-#endif
 #include <sstream>
 
 #include <google/protobuf/testing/file.h>
+#include <google/protobuf/test_util2.h>
 #include <google/protobuf/io/coded_stream.h>
 #include <google/protobuf/io/zero_copy_stream_impl.h>
 
@@ -206,7 +204,7 @@ void IoTest::WriteString(ZeroCopyOutputStream* output, const string& str) {
 }
 
 void IoTest::ReadString(ZeroCopyInputStream* input, const string& str) {
-  google::protobuf::scoped_array<char> buffer(new char[str.size() + 1]);
+  std::unique_ptr<char[]> buffer(new char[str.size() + 1]);
   buffer[str.size()] = '\0';
   EXPECT_EQ(ReadFromInput(input, buffer.get(), str.size()), str.size());
   EXPECT_STREQ(str.c_str(), buffer.get());
@@ -569,11 +567,10 @@ string IoTest::Uncompress(const string& data) {
 TEST_F(IoTest, CompressionOptions) {
   // Some ad-hoc testing of compression options.
 
+  string golden_filename =
+      TestUtil::GetTestDataPath("net/proto2/internal/testdata/golden_message");
   string golden;
-  GOOGLE_CHECK_OK(File::GetContents(
-      TestSourceDir() +
-          "/google/protobuf/testdata/golden_message",
-      &golden, true));
+  GOOGLE_CHECK_OK(File::GetContents(golden_filename, &golden, true));
 
   GzipOutputStream::Options options;
   string gzip_compressed = Compress(golden, options);

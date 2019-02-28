@@ -32,33 +32,37 @@
 //  Based on original Protocol Buffers design by
 //  Sanjay Ghemawat, Jeff Dean, and others.
 
-#include <algorithm>
+#include <google/protobuf/text_format.h>
+
 #include <float.h>
 #include <math.h>
 #include <stdio.h>
-#include <stack>
+#include <algorithm>
+#include <climits>
 #include <limits>
 #include <vector>
 
-#include <google/protobuf/text_format.h>
-
 #include <google/protobuf/stubs/stringprintf.h>
 #include <google/protobuf/any.h>
+#include <google/protobuf/descriptor.pb.h>
 #include <google/protobuf/io/strtod.h>
 #include <google/protobuf/io/coded_stream.h>
 #include <google/protobuf/io/tokenizer.h>
 #include <google/protobuf/io/zero_copy_stream.h>
 #include <google/protobuf/io/zero_copy_stream_impl.h>
-#include <google/protobuf/descriptor.pb.h>
 #include <google/protobuf/descriptor.h>
 #include <google/protobuf/dynamic_message.h>
+#include <google/protobuf/map_field.h>
 #include <google/protobuf/repeated_field.h>
 #include <google/protobuf/unknown_field_set.h>
 #include <google/protobuf/wire_format_lite.h>
 #include <google/protobuf/stubs/strutil.h>
 
+
+
 #include <google/protobuf/stubs/map_util.h>
 #include <google/protobuf/stubs/stl_util.h>
+
 
 namespace google {
 namespace protobuf {
@@ -189,11 +193,29 @@ TextFormat::ParseInfoTree* TextFormat::ParseInfoTree::GetTreeForNested(
   return (*trees)[index];
 }
 
+namespace {
+// These functions implement the behavior of the "default" TextFormat::Finder,
+// they are defined as standalone to be called when finder_ is NULL.
+const FieldDescriptor* DefaultFinderFindExtension(Message* message,
+                                                  const string& name) {
+  return message->GetReflection()->FindKnownExtensionByName(name);
+}
+
+const Descriptor* DefaultFinderFindAnyType(const Message& message,
+                                           const string& prefix,
+                                           const string& name) {
+  if (prefix != internal::kTypeGoogleApisComPrefix &&
+      prefix != internal::kTypeGoogleProdComPrefix) {
+    return NULL;
+  }
+  return message.GetDescriptor()->file()->pool()->FindMessageTypeByName(name);
+}
+}  // namespace
 
 // ===========================================================================
 // Internal class for parsing an ASCII representation of a Protocol Message.
 // This class makes use of the Protocol Message compiler's tokenizer found
-// in //google/protobuf/io/tokenizer.h. Note that class's Parse
+// in //net/proto2/io/public/tokenizer.h. Note that class's Parse
 // method is *not* thread-safe and should only be used in a single thread at
 // a time.
 
@@ -217,11 +239,12 @@ class TextFormat::Parser::ParserImpl {
   ParserImpl(const Descriptor* root_message_type,
              io::ZeroCopyInputStream* input_stream,
              io::ErrorCollector* error_collector,
-             TextFormat::Finder* finder,
+             const TextFormat::Finder* finder,
              ParseInfoTree* parse_info_tree,
              SingularOverwritePolicy singular_overwrite_policy,
              bool allow_case_insensitive_field,
              bool allow_unknown_field,
+             bool allow_unknown_extension,
              bool allow_unknown_enum,
              bool allow_field_number,
              bool allow_relaxed_whitespace,
@@ -235,6 +258,7 @@ class TextFormat::Parser::ParserImpl {
       singular_overwrite_policy_(singular_overwrite_policy),
       allow_case_insensitive_field_(allow_case_insensitive_field),
       allow_unknown_field_(allow_unknown_field),
+      allow_unknown_extension_(allow_unknown_extension),
       allow_unknown_enum_(allow_unknown_enum),
       allow_field_number_(allow_field_number),
       allow_partial_(allow_partial),
@@ -380,9 +404,15 @@ class TextFormat::Parser::ParserImpl {
       DO(Consume("]"));
       TryConsume(":");  // ':' is optional between message labels and values.
       string serialized_value;
-      DO(ConsumeAnyValue(full_type_name,
-                         message->GetDescriptor()->file()->pool(),
-                         &serialized_value));
+      const Descriptor* value_descriptor =
+          finder_ ? finder_->FindAnyType(*message, prefix, full_type_name)
+                  : DefaultFinderFindAnyType(*message, prefix, full_type_name);
+      if (value_descriptor == NULL) {
+        ReportError("Could not find type \"" + prefix + full_type_name +
+                    "\" stored in google.protobuf.Any.");
+        return false;
+      }
+      DO(ConsumeAnyValue(value_descriptor, &serialized_value));
       if (singular_overwrite_policy_ == FORBID_SINGULAR_OVERWRITES) {
         // Fail if any_type_url_field has already been specified.
         if ((!any_type_url_field->is_repeated() &&
@@ -404,19 +434,18 @@ class TextFormat::Parser::ParserImpl {
       DO(ConsumeFullTypeName(&field_name));
       DO(Consume("]"));
 
-      field = (finder_ != NULL
-               ? finder_->FindExtension(message, field_name)
-               : reflection->FindKnownExtensionByName(field_name));
+      field = finder_ ? finder_->FindExtension(message, field_name)
+                      : DefaultFinderFindExtension(message, field_name);
 
       if (field == NULL) {
-        if (!allow_unknown_field_) {
+        if (!allow_unknown_field_ && !allow_unknown_extension_) {
           ReportError("Extension \"" + field_name + "\" is not defined or "
                       "is not an extension of \"" +
                       descriptor->full_name() + "\".");
           return false;
         } else {
-          ReportWarning("Extension \"" + field_name + "\" is not defined or "
-                        "is not an extension of \"" +
+          ReportWarning("Ignoring extension \"" + field_name +
+                        "\" which is not defined or is not an extension of \"" +
                         descriptor->full_name() + "\".");
         }
       }
@@ -424,7 +453,8 @@ class TextFormat::Parser::ParserImpl {
       DO(ConsumeIdentifier(&field_name));
 
       int32 field_number;
-      if (allow_field_number_ && safe_strto32(field_name, &field_number)) {
+      if (allow_field_number_ &&
+          safe_strto32(field_name, &field_number)) {
         if (descriptor->IsExtensionNumber(field_number)) {
           field = reflection->FindKnownExtensionByNumber(field_number);
         } else if (descriptor->IsReservedNumber(field_number)) {
@@ -477,7 +507,7 @@ class TextFormat::Parser::ParserImpl {
 
     // Skips unknown or reserved fields.
     if (field == NULL) {
-      GOOGLE_CHECK(allow_unknown_field_ || reserved_field);
+      GOOGLE_CHECK(allow_unknown_field_ || allow_unknown_extension_ || reserved_field);
 
       // Try to guess the type of this field.
       // If this field is not a message, there should be a ":" between the
@@ -572,12 +602,12 @@ label_skip_parsing:
 
   // Skips the next field including the field's name and value.
   bool SkipField() {
-    string field_name;
     if (TryConsume("[")) {
-      // Extension name.
-      DO(ConsumeFullTypeName(&field_name));
+      // Extension name or type URL.
+      DO(ConsumeTypeUrlOrFullTypeName());
       DO(Consume("]"));
     } else {
+      string field_name;
       DO(ConsumeIdentifier(&field_name));
     }
 
@@ -734,7 +764,7 @@ label_skip_parsing:
                    LookingAtType(io::Tokenizer::TYPE_INTEGER)) {
           int64 int_value;
           DO(ConsumeSignedInteger(&int_value, kint32max));
-          value = SimpleItoa(int_value);        // for error reporting
+          value = StrCat(int_value);  // for error reporting
           enum_value = enum_type->FindValueByNumber(int_value);
         } else {
           ReportError("Expected integer or identifier, got: " +
@@ -815,6 +845,8 @@ label_skip_parsing:
     if (!LookingAtType(io::Tokenizer::TYPE_INTEGER) &&
         !LookingAtType(io::Tokenizer::TYPE_FLOAT) &&
         !LookingAtType(io::Tokenizer::TYPE_IDENTIFIER)) {
+      string text = tokenizer_.current().text;
+      ReportError("Cannot skip field value, unexpected token: " + text);
       return false;
     }
     // Combination of '-' and TYPE_IDENTIFIER may result in an invalid field
@@ -858,8 +890,9 @@ label_skip_parsing:
 
     // If allow_field_numer_ or allow_unknown_field_ is true, we should able
     // to parse integer identifiers.
-    if ((allow_field_number_ || allow_unknown_field_)
-        && LookingAtType(io::Tokenizer::TYPE_INTEGER)) {
+    if ((allow_field_number_ || allow_unknown_field_ ||
+         allow_unknown_extension_) &&
+        LookingAtType(io::Tokenizer::TYPE_INTEGER)) {
       *identifier = tokenizer_.current().text;
       tokenizer_.Next();
       return true;
@@ -877,6 +910,15 @@ label_skip_parsing:
       DO(ConsumeIdentifier(&part));
       *name += ".";
       *name += part;
+    }
+    return true;
+  }
+
+  bool ConsumeTypeUrlOrFullTypeName() {
+    string discarded;
+    DO(ConsumeIdentifier(&discarded));
+    while (TryConsume(".") || TryConsume("/")) {
+      DO(ConsumeIdentifier(&discarded));
     }
     return true;
   }
@@ -1029,44 +1071,29 @@ label_skip_parsing:
   bool ConsumeAnyTypeUrl(string* full_type_name, string* prefix) {
     // TODO(saito) Extend Consume() to consume multiple tokens at once, so that
     // this code can be written as just DO(Consume(kGoogleApisTypePrefix)).
-    string url1, url2, url3;
-    DO(ConsumeIdentifier(&url1));  // type
-    DO(Consume("."));
-    DO(ConsumeIdentifier(&url2));  // googleapis
-    DO(Consume("."));
-    DO(ConsumeIdentifier(&url3));  // com
+    DO(ConsumeIdentifier(prefix));
+    while (TryConsume(".")) {
+      string url;
+      DO(ConsumeIdentifier(&url));
+      *prefix += "." + url;
+    }
     DO(Consume("/"));
+    *prefix += "/";
     DO(ConsumeFullTypeName(full_type_name));
 
-    *prefix = url1 + "." + url2 + "." + url3 + "/";
-    if (*prefix != internal::kTypeGoogleApisComPrefix &&
-        *prefix != internal::kTypeGoogleProdComPrefix) {
-      ReportError("TextFormat::Parser for Any supports only "
-                  "type.googleapis.com and type.googleprod.com, "
-                  "but found \"" + *prefix + "\"");
-      return false;
-    }
     return true;
   }
 
   // A helper function for reconstructing Any::value. Consumes a text of
-  // full_type_name, then serializes it into serialized_value. "pool" is used to
-  // look up and create a temporary object with full_type_name.
-  bool ConsumeAnyValue(const string& full_type_name, const DescriptorPool* pool,
+  // full_type_name, then serializes it into serialized_value.
+  bool ConsumeAnyValue(const Descriptor* value_descriptor,
                        string* serialized_value) {
-    const Descriptor* value_descriptor =
-        pool->FindMessageTypeByName(full_type_name);
-    if (value_descriptor == NULL) {
-      ReportError("Could not find type \"" + full_type_name +
-                  "\" stored in google.protobuf.Any.");
-      return false;
-    }
     DynamicMessageFactory factory;
     const Message* value_prototype = factory.GetPrototype(value_descriptor);
     if (value_prototype == NULL) {
       return false;
     }
-    google::protobuf::scoped_ptr<Message> value(value_prototype->New());
+    std::unique_ptr<Message> value(value_prototype->New());
     string sub_delimiter;
     DO(ConsumeMessageDelimiter(&sub_delimiter));
     DO(ConsumeMessage(value.get(), sub_delimiter));
@@ -1076,7 +1103,7 @@ label_skip_parsing:
     } else {
       if (!value->IsInitialized()) {
         ReportError(
-            "Value of type \"" + full_type_name +
+            "Value of type \"" + value_descriptor->full_name() +
             "\" stored in google.protobuf.Any has missing required fields");
         return false;
       }
@@ -1120,13 +1147,13 @@ label_skip_parsing:
     explicit ParserErrorCollector(TextFormat::Parser::ParserImpl* parser) :
         parser_(parser) { }
 
-    virtual ~ParserErrorCollector() { }
+    ~ParserErrorCollector() override {}
 
-    virtual void AddError(int line, int column, const string& message) {
+    void AddError(int line, int column, const string& message) override {
       parser_->ReportError(line, column, message);
     }
 
-    virtual void AddWarning(int line, int column, const string& message) {
+    void AddWarning(int line, int column, const string& message) override {
       parser_->ReportWarning(line, column, message);
     }
 
@@ -1136,7 +1163,7 @@ label_skip_parsing:
   };
 
   io::ErrorCollector* error_collector_;
-  TextFormat::Finder* finder_;
+  const TextFormat::Finder* finder_;
   ParseInfoTree* parse_info_tree_;
   ParserErrorCollector tokenizer_error_collector_;
   io::Tokenizer tokenizer_;
@@ -1144,17 +1171,16 @@ label_skip_parsing:
   SingularOverwritePolicy singular_overwrite_policy_;
   const bool allow_case_insensitive_field_;
   const bool allow_unknown_field_;
+  const bool allow_unknown_extension_;
   const bool allow_unknown_enum_;
   const bool allow_field_number_;
   const bool allow_partial_;
   bool had_errors_;
 };
 
-#undef DO
-
 // ===========================================================================
 // Internal class for writing text to the io::ZeroCopyOutputStream. Adapted
-// from the Printer found in //google/protobuf/io/printer.h
+// from the Printer found in //net/proto2/io/public/printer.h
 class TextFormat::Printer::TextGenerator
     : public TextFormat::BaseTextGenerator {
  public:
@@ -1180,13 +1206,11 @@ class TextFormat::Printer::TextGenerator
   // Indent text by two spaces.  After calling Indent(), two spaces will be
   // inserted at the beginning of each line of text.  Indent() may be called
   // multiple times to produce deeper indents.
-  void Indent() {
-    ++indent_level_;
-  }
+  void Indent() override { ++indent_level_; }
 
   // Reduces the current indent level by two spaces, or crashes if the indent
   // level is zero.
-  void Outdent() {
+  void Outdent() override {
     if (indent_level_ == 0 ||
         indent_level_ < initial_indent_level_) {
       GOOGLE_LOG(DFATAL) << " Outdent() without matching Indent().";
@@ -1197,7 +1221,7 @@ class TextFormat::Printer::TextGenerator
   }
 
   // Print text to the output stream.
-  void Print(const char* text, size_t size) {
+  void Print(const char* text, size_t size) override {
     if (indent_level_ > 0) {
       size_t pos = 0;  // The number of bytes we've written so far.
       for (size_t i = 0; i < size; i++) {
@@ -1294,9 +1318,22 @@ class TextFormat::Printer::TextGenerator
 };
 
 // ===========================================================================
-
+// Implementation of the default Finder for extensions.
 TextFormat::Finder::~Finder() {
 }
+
+const FieldDescriptor* TextFormat::Finder::FindExtension(
+    Message* message, const string& name) const {
+  return DefaultFinderFindExtension(message, name);
+}
+
+const Descriptor* TextFormat::Finder::FindAnyType(const Message& message,
+                                                  const string& prefix,
+                                                  const string& name) const {
+  return DefaultFinderFindAnyType(message, prefix, name);
+}
+
+// ===========================================================================
 
 TextFormat::Parser::Parser()
   : error_collector_(NULL),
@@ -1305,6 +1342,7 @@ TextFormat::Parser::Parser()
     allow_partial_(false),
     allow_case_insensitive_field_(false),
     allow_unknown_field_(false),
+    allow_unknown_extension_(false),
     allow_unknown_enum_(false),
     allow_field_number_(false),
     allow_relaxed_whitespace_(false),
@@ -1312,6 +1350,22 @@ TextFormat::Parser::Parser()
 }
 
 TextFormat::Parser::~Parser() {}
+
+namespace {
+
+bool CheckParseInputSize(StringPiece input,
+                         io::ErrorCollector* error_collector) {
+  if (input.size() > INT_MAX) {
+    error_collector->AddError(
+        -1, 0,
+        StrCat("Input size too large: ", static_cast<int64>(input.size()),
+                     " bytes", " > ", INT_MAX, " bytes."));
+    return false;
+  }
+  return true;
+}
+
+}  // namespace
 
 bool TextFormat::Parser::Parse(io::ZeroCopyInputStream* input,
                                Message* output) {
@@ -1322,17 +1376,17 @@ bool TextFormat::Parser::Parse(io::ZeroCopyInputStream* input,
       ? ParserImpl::ALLOW_SINGULAR_OVERWRITES
       : ParserImpl::FORBID_SINGULAR_OVERWRITES;
 
-  ParserImpl parser(output->GetDescriptor(), input, error_collector_,
-                    finder_, parse_info_tree_,
-                    overwrites_policy,
-                    allow_case_insensitive_field_, allow_unknown_field_,
-                    allow_unknown_enum_, allow_field_number_,
-                    allow_relaxed_whitespace_, allow_partial_);
+  ParserImpl parser(
+      output->GetDescriptor(), input, error_collector_, finder_,
+      parse_info_tree_, overwrites_policy, allow_case_insensitive_field_,
+      allow_unknown_field_, allow_unknown_extension_, allow_unknown_enum_,
+      allow_field_number_, allow_relaxed_whitespace_, allow_partial_);
   return MergeUsingImpl(input, output, &parser);
 }
 
 bool TextFormat::Parser::ParseFromString(const string& input,
                                          Message* output) {
+  DO(CheckParseInputSize(input, error_collector_));
   io::ArrayInputStream input_stream(input.data(), input.size());
   return Parse(&input_stream, output);
 }
@@ -1340,17 +1394,18 @@ bool TextFormat::Parser::ParseFromString(const string& input,
 
 bool TextFormat::Parser::Merge(io::ZeroCopyInputStream* input,
                                Message* output) {
-  ParserImpl parser(output->GetDescriptor(), input, error_collector_,
-                    finder_, parse_info_tree_,
-                    ParserImpl::ALLOW_SINGULAR_OVERWRITES,
+  ParserImpl parser(output->GetDescriptor(), input, error_collector_, finder_,
+                    parse_info_tree_, ParserImpl::ALLOW_SINGULAR_OVERWRITES,
                     allow_case_insensitive_field_, allow_unknown_field_,
-                    allow_unknown_enum_, allow_field_number_,
-                    allow_relaxed_whitespace_, allow_partial_);
+                    allow_unknown_extension_, allow_unknown_enum_,
+                    allow_field_number_, allow_relaxed_whitespace_,
+                    allow_partial_);
   return MergeUsingImpl(input, output, &parser);
 }
 
 bool TextFormat::Parser::MergeFromString(const string& input,
                                          Message* output) {
+  DO(CheckParseInputSize(input, error_collector_));
   io::ArrayInputStream input_stream(input.data(), input.size());
   return Merge(&input_stream, output);
 }
@@ -1363,8 +1418,9 @@ bool TextFormat::Parser::MergeUsingImpl(io::ZeroCopyInputStream* /* input */,
   if (!allow_partial_ && !output->IsInitialized()) {
     std::vector<string> missing_fields;
     output->FindInitializationErrors(&missing_fields);
-    parser_impl->ReportError(-1, 0, "Message missing required fields: " +
-                                        Join(missing_fields, ", "));
+    parser_impl->ReportError(-1, 0,
+                             "Message missing required fields: " +
+                                 Join(missing_fields, ", "));
     return false;
   }
   return true;
@@ -1375,12 +1431,12 @@ bool TextFormat::Parser::ParseFieldValueFromString(
     const FieldDescriptor* field,
     Message* output) {
   io::ArrayInputStream input_stream(input.data(), input.size());
-  ParserImpl parser(output->GetDescriptor(), &input_stream, error_collector_,
-                    finder_, parse_info_tree_,
-                    ParserImpl::ALLOW_SINGULAR_OVERWRITES,
-                    allow_case_insensitive_field_, allow_unknown_field_,
-                    allow_unknown_enum_, allow_field_number_,
-                    allow_relaxed_whitespace_, allow_partial_);
+  ParserImpl parser(
+      output->GetDescriptor(), &input_stream, error_collector_, finder_,
+      parse_info_tree_, ParserImpl::ALLOW_SINGULAR_OVERWRITES,
+      allow_case_insensitive_field_, allow_unknown_field_,
+      allow_unknown_extension_, allow_unknown_enum_, allow_field_number_,
+      allow_relaxed_whitespace_, allow_partial_);
   return parser.ParseField(field, output);
 }
 
@@ -1405,6 +1461,8 @@ bool TextFormat::Parser::ParseFieldValueFromString(
 }
 
 
+#undef DO
+
 // ===========================================================================
 
 TextFormat::BaseTextGenerator::~BaseTextGenerator() {}
@@ -1414,7 +1472,9 @@ namespace {
 // A BaseTextGenerator that writes to a string.
 class StringBaseTextGenerator : public TextFormat::BaseTextGenerator {
  public:
-  void Print(const char* text, size_t size) { output_.append(text, size); }
+  void Print(const char* text, size_t size) override {
+    output_.append(text, size);
+  }
 
 // Some compilers do not support ref-qualifiers even in C++11 mode.
 // Disable the optimization for now and revisit it later.
@@ -1515,19 +1575,19 @@ void TextFormat::FastFieldValuePrinter::PrintBool(
 }
 void TextFormat::FastFieldValuePrinter::PrintInt32(
     int32 val, BaseTextGenerator* generator) const {
-  generator->PrintString(SimpleItoa(val));
+  generator->PrintString(StrCat(val));
 }
 void TextFormat::FastFieldValuePrinter::PrintUInt32(
     uint32 val, BaseTextGenerator* generator) const {
-  generator->PrintString(SimpleItoa(val));
+  generator->PrintString(StrCat(val));
 }
 void TextFormat::FastFieldValuePrinter::PrintInt64(
     int64 val, BaseTextGenerator* generator) const {
-  generator->PrintString(SimpleItoa(val));
+  generator->PrintString(StrCat(val));
 }
 void TextFormat::FastFieldValuePrinter::PrintUInt64(
     uint64 val, BaseTextGenerator* generator) const {
-  generator->PrintString(SimpleItoa(val));
+  generator->PrintString(StrCat(val));
 }
 void TextFormat::FastFieldValuePrinter::PrintFloat(
     float val, BaseTextGenerator* generator) const {
@@ -1551,6 +1611,12 @@ void TextFormat::FastFieldValuePrinter::PrintString(
 void TextFormat::FastFieldValuePrinter::PrintBytes(
     const string& val, BaseTextGenerator* generator) const {
   PrintString(val, generator);
+}
+void TextFormat::FastFieldValuePrinter::PrintFieldName(
+    const Message& message, int field_index, int field_count,
+    const Reflection* reflection, const FieldDescriptor* field,
+    BaseTextGenerator* generator) const {
+  PrintFieldName(message, reflection, field, generator);
 }
 void TextFormat::FastFieldValuePrinter::PrintFieldName(
     const Message& message, const Reflection* reflection,
@@ -1606,60 +1672,76 @@ class FieldValuePrinterWrapper : public TextFormat::FastFieldValuePrinter {
     delegate_.reset(delegate);
   }
 
-  void PrintBool(bool val, TextFormat::BaseTextGenerator* generator) const {
+  void PrintBool(bool val,
+                 TextFormat::BaseTextGenerator* generator) const override {
     generator->PrintString(delegate_->PrintBool(val));
   }
-  void PrintInt32(int32 val, TextFormat::BaseTextGenerator* generator) const {
+  void PrintInt32(int32 val,
+                  TextFormat::BaseTextGenerator* generator) const override {
     generator->PrintString(delegate_->PrintInt32(val));
   }
-  void PrintUInt32(uint32 val, TextFormat::BaseTextGenerator* generator) const {
+  void PrintUInt32(uint32 val,
+                   TextFormat::BaseTextGenerator* generator) const override {
     generator->PrintString(delegate_->PrintUInt32(val));
   }
-  void PrintInt64(int64 val, TextFormat::BaseTextGenerator* generator) const {
+  void PrintInt64(int64 val,
+                  TextFormat::BaseTextGenerator* generator) const override {
     generator->PrintString(delegate_->PrintInt64(val));
   }
-  void PrintUInt64(uint64 val, TextFormat::BaseTextGenerator* generator) const {
+  void PrintUInt64(uint64 val,
+                   TextFormat::BaseTextGenerator* generator) const override {
     generator->PrintString(delegate_->PrintUInt64(val));
   }
-  void PrintFloat(float val, TextFormat::BaseTextGenerator* generator) const {
+  void PrintFloat(float val,
+                  TextFormat::BaseTextGenerator* generator) const override {
     generator->PrintString(delegate_->PrintFloat(val));
   }
-  void PrintDouble(double val, TextFormat::BaseTextGenerator* generator) const {
+  void PrintDouble(double val,
+                   TextFormat::BaseTextGenerator* generator) const override {
     generator->PrintString(delegate_->PrintDouble(val));
   }
   void PrintString(const string& val,
-                   TextFormat::BaseTextGenerator* generator) const {
+                   TextFormat::BaseTextGenerator* generator) const override {
     generator->PrintString(delegate_->PrintString(val));
   }
   void PrintBytes(const string& val,
-                  TextFormat::BaseTextGenerator* generator) const {
+                  TextFormat::BaseTextGenerator* generator) const override {
     generator->PrintString(delegate_->PrintBytes(val));
   }
   void PrintEnum(int32 val, const string& name,
-                 TextFormat::BaseTextGenerator* generator) const {
+                 TextFormat::BaseTextGenerator* generator) const override {
     generator->PrintString(delegate_->PrintEnum(val, name));
   }
-  void PrintFieldName(const Message& message, const Reflection* reflection,
+  void PrintFieldName(const Message& message, int field_index, int field_count,
+                      const Reflection* reflection,
                       const FieldDescriptor* field,
-                      TextFormat::BaseTextGenerator* generator) const {
+                      TextFormat::BaseTextGenerator* generator) const override {
     generator->PrintString(
         delegate_->PrintFieldName(message, reflection, field));
   }
-  void PrintMessageStart(const Message& message, int field_index,
-                         int field_count, bool single_line_mode,
-                         TextFormat::BaseTextGenerator* generator) const {
+  void PrintFieldName(const Message& message, const Reflection* reflection,
+                      const FieldDescriptor* field,
+                      TextFormat::BaseTextGenerator* generator) const override {
+    generator->PrintString(
+        delegate_->PrintFieldName(message, reflection, field));
+  }
+  void PrintMessageStart(
+      const Message& message, int field_index, int field_count,
+      bool single_line_mode,
+      TextFormat::BaseTextGenerator* generator) const override {
     generator->PrintString(delegate_->PrintMessageStart(
         message, field_index, field_count, single_line_mode));
   }
-  void PrintMessageEnd(const Message& message, int field_index, int field_count,
-                       bool single_line_mode,
-                       TextFormat::BaseTextGenerator* generator) const {
+  void PrintMessageEnd(
+      const Message& message, int field_index, int field_count,
+      bool single_line_mode,
+      TextFormat::BaseTextGenerator* generator) const override {
     generator->PrintString(delegate_->PrintMessageEnd(
         message, field_index, field_count, single_line_mode));
   }
 
  private:
-  google::protobuf::scoped_ptr<const TextFormat::FieldValuePrinter> delegate_;
+  std::unique_ptr<const TextFormat::FieldValuePrinter> delegate_;
 };
 
 // Our own specialization: for UTF8 escaped strings.
@@ -1667,13 +1749,13 @@ class FastFieldValuePrinterUtf8Escaping
     : public TextFormat::FastFieldValuePrinter {
  public:
   void PrintString(const string& val,
-                   TextFormat::BaseTextGenerator* generator) const {
+                   TextFormat::BaseTextGenerator* generator) const override {
     generator->PrintLiteral("\"");
     generator->PrintString(strings::Utf8SafeCEscape(val));
     generator->PrintLiteral("\"");
   }
   void PrintBytes(const string& val,
-                  TextFormat::BaseTextGenerator* generator) const {
+                  TextFormat::BaseTextGenerator* generator) const override {
     return FastFieldValuePrinter::PrintString(val, generator);
   }
 };
@@ -1688,12 +1770,14 @@ TextFormat::Printer::Printer()
     hide_unknown_fields_(false),
     print_message_fields_in_index_order_(false),
     expand_any_(false),
-    truncate_string_field_longer_than_(0LL) {
+    truncate_string_field_longer_than_(0LL),
+    finder_(NULL) {
   SetUseUtf8StringEscaping(false);
 }
 
 TextFormat::Printer::~Printer() {
   STLDeleteValues(&custom_printers_);
+  STLDeleteValues(&custom_message_printers_);
 }
 
 void TextFormat::Printer::SetUseUtf8StringEscaping(bool as_utf8) {
@@ -1718,7 +1802,7 @@ bool TextFormat::Printer::RegisterFieldValuePrinter(
     return false;
   }
   FieldValuePrinterWrapper* const wrapper =
-      new FieldValuePrinterWrapper(NULL);
+      new FieldValuePrinterWrapper(nullptr);
   if (custom_printers_.insert(std::make_pair(field, wrapper)).second) {
     wrapper->SetDelegate(printer);
     return true;
@@ -1732,6 +1816,13 @@ bool TextFormat::Printer::RegisterFieldValuePrinter(
     const FieldDescriptor* field, const FastFieldValuePrinter* printer) {
   return field != NULL && printer != NULL &&
          custom_printers_.insert(std::make_pair(field, printer)).second;
+}
+
+bool TextFormat::Printer::RegisterMessagePrinter(
+    const Descriptor* descriptor, const MessagePrinter* printer) {
+  return descriptor != nullptr && printer != nullptr &&
+         custom_message_printers_.insert(std::make_pair(descriptor, printer))
+             .second;
 }
 
 bool TextFormat::Printer::PrintToString(const Message& message,
@@ -1777,10 +1868,19 @@ bool TextFormat::Printer::PrintUnknownFields(
 
 namespace {
 // Comparison functor for sorting FieldDescriptors by field index.
+// Normal fields have higher precedence than extensions.
 struct FieldIndexSorter {
   bool operator()(const FieldDescriptor* left,
                   const FieldDescriptor* right) const {
-    return left->index() < right->index();
+    if (left->is_extension() && right->is_extension()) {
+      return left->number() < right->number();
+    } else if (left->is_extension()) {
+      return false;
+    } else if (right->is_extension()) {
+      return true;
+    } else {
+      return left->index() < right->index();
+    }
   }
 };
 
@@ -1799,21 +1899,22 @@ bool TextFormat::Printer::PrintAny(const Message& message,
 
   // Extract the full type name from the type_url field.
   const string& type_url = reflection->GetString(message, type_url_field);
+  string url_prefix;
   string full_type_name;
-  if (!internal::ParseAnyTypeUrl(type_url, &full_type_name)) {
+  if (!internal::ParseAnyTypeUrl(type_url, &url_prefix, &full_type_name)) {
     return false;
   }
 
   // Print the "value" in text.
-  const google::protobuf::Descriptor* value_descriptor =
-      message.GetDescriptor()->file()->pool()->FindMessageTypeByName(
-          full_type_name);
+  const Descriptor* value_descriptor =
+      finder_ ? finder_->FindAnyType(message, url_prefix, full_type_name)
+              : DefaultFinderFindAnyType(message, url_prefix, full_type_name);
   if (value_descriptor == NULL) {
     GOOGLE_LOG(WARNING) << "Proto type " << type_url << " not found";
     return false;
   }
   DynamicMessageFactory factory;
-  google::protobuf::scoped_ptr<google::protobuf::Message> value_message(
+  std::unique_ptr<Message> value_message(
       factory.GetPrototype(value_descriptor)->New());
   string serialized_value = reflection->GetString(message, value_field);
   if (!value_message->ParseFromString(serialized_value)) {
@@ -1836,13 +1937,24 @@ bool TextFormat::Printer::PrintAny(const Message& message,
 void TextFormat::Printer::Print(const Message& message,
                                 TextGenerator* generator) const {
   const Descriptor* descriptor = message.GetDescriptor();
+  auto itr = custom_message_printers_.find(descriptor);
+  if (itr != custom_message_printers_.end()) {
+    itr->second->Print(message, single_line_mode_, generator);
+    return;
+  }
   const Reflection* reflection = message.GetReflection();
   if (descriptor->full_name() == internal::kAnyFullTypeName && expand_any_ &&
       PrintAny(message, generator)) {
     return;
   }
   std::vector<const FieldDescriptor*> fields;
-  reflection->ListFields(message, &fields);
+  if (descriptor->options().map_entry()) {
+    fields.push_back(descriptor->field(0));
+    fields.push_back(descriptor->field(1));
+  } else {
+    reflection->ListFields(message, &fields);
+  }
+
   if (print_message_fields_in_index_order_) {
     std::sort(fields.begin(), fields.end(), FieldIndexSorter());
   }
@@ -1859,7 +1971,6 @@ void TextFormat::Printer::PrintFieldValueToString(
     const FieldDescriptor* field,
     int index,
     string* output) const {
-
   GOOGLE_DCHECK(output) << "output specified is NULL";
 
   output->clear();
@@ -1868,6 +1979,181 @@ void TextFormat::Printer::PrintFieldValueToString(
 
   PrintFieldValue(message, message.GetReflection(), field, index, &generator);
 }
+
+class MapEntryMessageComparator {
+ public:
+  explicit MapEntryMessageComparator(const Descriptor* descriptor)
+      : field_(descriptor->field(0)) {}
+
+  bool operator()(const Message* a, const Message* b) {
+    const Reflection* reflection = a->GetReflection();
+    switch (field_->cpp_type()) {
+      case FieldDescriptor::CPPTYPE_BOOL: {
+          bool first = reflection->GetBool(*a, field_);
+          bool second = reflection->GetBool(*b, field_);
+          return first < second;
+      }
+      case FieldDescriptor::CPPTYPE_INT32: {
+          int32 first = reflection->GetInt32(*a, field_);
+          int32 second = reflection->GetInt32(*b, field_);
+          return first < second;
+      }
+      case FieldDescriptor::CPPTYPE_INT64: {
+          int64 first = reflection->GetInt64(*a, field_);
+          int64 second = reflection->GetInt64(*b, field_);
+          return first < second;
+      }
+      case FieldDescriptor::CPPTYPE_UINT32: {
+          uint32 first = reflection->GetUInt32(*a, field_);
+          uint32 second = reflection->GetUInt32(*b, field_);
+          return first < second;
+      }
+      case FieldDescriptor::CPPTYPE_UINT64: {
+          uint64 first = reflection->GetUInt64(*a, field_);
+          uint64 second = reflection->GetUInt64(*b, field_);
+          return first < second;
+      }
+      case FieldDescriptor::CPPTYPE_STRING: {
+          string first = reflection->GetString(*a, field_);
+          string second = reflection->GetString(*b, field_);
+          return first < second;
+      }
+      default:
+        GOOGLE_LOG(DFATAL) << "Invalid key for map field.";
+        return true;
+    }
+  }
+
+ private:
+  const FieldDescriptor* field_;
+};
+
+namespace internal {
+class MapFieldPrinterHelper {
+ public:
+  // DynamicMapSorter::Sort cannot be used because it enfores syncing with
+  // repeated field.
+  static bool SortMap(const Message& message, const Reflection* reflection,
+                      const FieldDescriptor* field, MessageFactory* factory,
+                      std::vector<const Message*>* sorted_map_field);
+  static void CopyKey(const MapKey& key, Message* message,
+                      const FieldDescriptor* field_desc);
+  static void CopyValue(const MapValueRef& value, Message* message,
+                        const FieldDescriptor* field_desc);
+};
+
+// Returns true if elements contained in sorted_map_field need to be released.
+bool MapFieldPrinterHelper::SortMap(
+    const Message& message, const Reflection* reflection,
+    const FieldDescriptor* field, MessageFactory* factory,
+    std::vector<const Message*>* sorted_map_field) {
+  bool need_release = false;
+  const MapFieldBase& base =
+      *reflection->GetMapData(message, field);
+
+  if (base.IsRepeatedFieldValid()) {
+    const RepeatedPtrField<Message>& map_field =
+        reflection->GetRepeatedPtrField<Message>(message, field);
+    for (int i = 0; i < map_field.size(); ++i) {
+      sorted_map_field->push_back(
+          const_cast<RepeatedPtrField<Message>*>(&map_field)->Mutable(i));
+    }
+  } else {
+    // TODO(teboring): For performance, instead of creating map entry message
+    // for each element, just store map keys and sort them.
+    const Descriptor* map_entry_desc = field->message_type();
+    const Message* prototype = factory->GetPrototype(map_entry_desc);
+    for (MapIterator iter =
+             reflection->MapBegin(const_cast<Message*>(&message), field);
+         iter != reflection->MapEnd(const_cast<Message*>(&message), field);
+         ++iter) {
+      Message* map_entry_message = prototype->New();
+      CopyKey(iter.GetKey(), map_entry_message, map_entry_desc->field(0));
+      CopyValue(iter.GetValueRef(), map_entry_message,
+                map_entry_desc->field(1));
+      sorted_map_field->push_back(map_entry_message);
+    }
+    need_release = true;
+  }
+
+  MapEntryMessageComparator comparator(field->message_type());
+  std::stable_sort(sorted_map_field->begin(), sorted_map_field->end(),
+                   comparator);
+  return need_release;
+}
+
+void MapFieldPrinterHelper::CopyKey(const MapKey& key, Message* message,
+                                    const FieldDescriptor* field_desc) {
+  const Reflection* reflection = message->GetReflection();
+  switch (field_desc->cpp_type()) {
+    case FieldDescriptor::CPPTYPE_DOUBLE:
+    case FieldDescriptor::CPPTYPE_FLOAT:
+    case FieldDescriptor::CPPTYPE_ENUM:
+    case FieldDescriptor::CPPTYPE_MESSAGE:
+      GOOGLE_LOG(ERROR) << "Not supported.";
+      break;
+    case FieldDescriptor::CPPTYPE_STRING:
+      reflection->SetString(message, field_desc, key.GetStringValue());
+      return;
+    case FieldDescriptor::CPPTYPE_INT64:
+      reflection->SetInt64(message, field_desc, key.GetInt64Value());
+      return;
+    case FieldDescriptor::CPPTYPE_INT32:
+      reflection->SetInt32(message, field_desc, key.GetInt32Value());
+      return;
+    case FieldDescriptor::CPPTYPE_UINT64:
+      reflection->SetUInt64(message, field_desc, key.GetUInt64Value());
+      return;
+    case FieldDescriptor::CPPTYPE_UINT32:
+      reflection->SetUInt32(message, field_desc, key.GetUInt32Value());
+      return;
+    case FieldDescriptor::CPPTYPE_BOOL:
+      reflection->SetBool(message, field_desc, key.GetBoolValue());
+      return;
+  }
+}
+
+void MapFieldPrinterHelper::CopyValue(const MapValueRef& value,
+                                      Message* message,
+                                      const FieldDescriptor* field_desc) {
+  const Reflection* reflection = message->GetReflection();
+  switch (field_desc->cpp_type()) {
+    case FieldDescriptor::CPPTYPE_DOUBLE:
+      reflection->SetDouble(message, field_desc, value.GetDoubleValue());
+      return;
+    case FieldDescriptor::CPPTYPE_FLOAT:
+      reflection->SetFloat(message, field_desc, value.GetFloatValue());
+      return;
+    case FieldDescriptor::CPPTYPE_ENUM:
+      reflection->SetEnumValue(message, field_desc, value.GetEnumValue());
+      return;
+    case FieldDescriptor::CPPTYPE_MESSAGE: {
+      Message* sub_message = value.GetMessageValue().New();
+      sub_message->CopyFrom(value.GetMessageValue());
+      reflection->SetAllocatedMessage(message, sub_message, field_desc);
+      return;
+    }
+    case FieldDescriptor::CPPTYPE_STRING:
+      reflection->SetString(message, field_desc, value.GetStringValue());
+      return;
+    case FieldDescriptor::CPPTYPE_INT64:
+      reflection->SetInt64(message, field_desc, value.GetInt64Value());
+      return;
+    case FieldDescriptor::CPPTYPE_INT32:
+      reflection->SetInt32(message, field_desc, value.GetInt32Value());
+      return;
+    case FieldDescriptor::CPPTYPE_UINT64:
+      reflection->SetUInt64(message, field_desc, value.GetUInt64Value());
+      return;
+    case FieldDescriptor::CPPTYPE_UINT32:
+      reflection->SetUInt32(message, field_desc, value.GetUInt32Value());
+      return;
+    case FieldDescriptor::CPPTYPE_BOOL:
+      reflection->SetBool(message, field_desc, value.GetBoolValue());
+      return;
+  }
+}
+}  // namespace internal
 
 void TextFormat::Printer::PrintField(const Message& message,
                                      const Reflection* reflection,
@@ -1885,27 +2171,31 @@ void TextFormat::Printer::PrintField(const Message& message,
 
   if (field->is_repeated()) {
     count = reflection->FieldSize(message, field);
-  } else if (reflection->HasField(message, field)) {
+  } else if (reflection->HasField(message, field) ||
+             field->containing_type()->options().map_entry()) {
     count = 1;
   }
 
-  std::vector<const Message*> map_entries;
-  const bool is_map = field->is_map();
+  DynamicMessageFactory factory;
+  std::vector<const Message*> sorted_map_field;
+  bool need_release = false;
+  bool is_map = field->is_map();
   if (is_map) {
-    map_entries = DynamicMapSorter::Sort(message, count, reflection, field);
+    need_release = internal::MapFieldPrinterHelper::SortMap(
+        message, reflection, field, &factory, &sorted_map_field);
   }
 
   for (int j = 0; j < count; ++j) {
     const int field_index = field->is_repeated() ? j : -1;
 
-    PrintFieldName(message, reflection, field, generator);
+    PrintFieldName(message, field_index, count, reflection, field, generator);
 
     if (field->cpp_type() == FieldDescriptor::CPPTYPE_MESSAGE) {
       const FastFieldValuePrinter* printer = FindWithDefault(
           custom_printers_, field, default_field_value_printer_.get());
       const Message& sub_message =
           field->is_repeated()
-              ? (is_map ? *map_entries[j]
+              ? (is_map ? *sorted_map_field[j]
                         : reflection->GetRepeatedMessage(message, field, j))
               : reflection->GetMessage(message, field);
       printer->PrintMessageStart(sub_message, field_index, count,
@@ -1926,15 +2216,21 @@ void TextFormat::Printer::PrintField(const Message& message,
       }
     }
   }
+
+  if (need_release) {
+    for (int j = 0; j < sorted_map_field.size(); ++j) {
+      delete sorted_map_field[j];
+    }
+  }
 }
 
 void TextFormat::Printer::PrintShortRepeatedField(
     const Message& message, const Reflection* reflection,
     const FieldDescriptor* field, TextGenerator* generator) const {
   // Print primitive repeated field in short form.
-  PrintFieldName(message, reflection, field, generator);
-
   int size = reflection->FieldSize(message, field);
+  PrintFieldName(message, /*field_index=*/-1, /*field_count=*/size, reflection,
+                 field, generator);
   generator->PrintLiteral(": [");
   for (int i = 0; i < size; i++) {
     if (i > 0) generator->PrintLiteral(", ");
@@ -1948,19 +2244,21 @@ void TextFormat::Printer::PrintShortRepeatedField(
 }
 
 void TextFormat::Printer::PrintFieldName(const Message& message,
+                                         int field_index, int field_count,
                                          const Reflection* reflection,
                                          const FieldDescriptor* field,
                                          TextGenerator* generator) const {
   // if use_field_number_ is true, prints field number instead
   // of field name.
   if (use_field_number_) {
-    generator->PrintString(SimpleItoa(field->number()));
+    generator->PrintString(StrCat(field->number()));
     return;
   }
 
   const FastFieldValuePrinter* printer = FindWithDefault(
       custom_printers_, field, default_field_value_printer_.get());
-  printer->PrintFieldName(message, reflection, field, generator);
+  printer->PrintFieldName(message, field_index, field_count, reflection, field,
+                          generator);
 }
 
 void TextFormat::Printer::PrintFieldValue(const Message& message,
@@ -2098,13 +2396,13 @@ void TextFormat::Printer::PrintUnknownFields(
     const UnknownFieldSet& unknown_fields, TextGenerator* generator) const {
   for (int i = 0; i < unknown_fields.field_count(); i++) {
     const UnknownField& field = unknown_fields.field(i);
-    string field_number = SimpleItoa(field.number());
+    string field_number = StrCat(field.number());
 
     switch (field.type()) {
       case UnknownField::TYPE_VARINT:
         generator->PrintString(field_number);
         generator->PrintLiteral(": ");
-        generator->PrintString(SimpleItoa(field.varint()));
+        generator->PrintString(StrCat(field.varint()));
         if (single_line_mode_) {
           generator->PrintLiteral(" ");
         } else {

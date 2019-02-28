@@ -29,9 +29,6 @@
 // OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 
 #include <memory>
-#ifndef _SHARED_PTR_H
-#include <google/protobuf/stubs/shared_ptr.h>
-#endif
 
 #include <google/protobuf/compiler/cpp/cpp_helpers.h>
 #include <google/protobuf/compiler/cpp/cpp_generator.h>
@@ -45,11 +42,12 @@
 #include <gtest/gtest.h>
 
 namespace google {
-namespace atu = ::google::protobuf::compiler::annotation_test_util;
-
 namespace protobuf {
 namespace compiler {
 namespace cpp {
+
+namespace atu = annotation_test_util;
+
 namespace {
 
 class CppMetadataTest : public ::testing::Test {
@@ -62,7 +60,7 @@ class CppMetadataTest : public ::testing::Test {
                        string* pb_h, GeneratedCodeInfo* pb_h_info,
                        string* proto_h, GeneratedCodeInfo* proto_h_info,
                        string* pb_cc) {
-    google::protobuf::compiler::CommandLineInterface cli;
+    CommandLineInterface cli;
     CppGenerator cpp_generator;
     cli.RegisterGenerator("--cpp_out", &cpp_generator, "");
     string cpp_out =
@@ -72,9 +70,7 @@ class CppMetadataTest : public ::testing::Test {
         TestTempDir();
 
     const bool result =
-        atu::CaptureMetadata(filename, cpp_out,
-                             /* meta_file_suffix */ "", &cli, file,
-                             /* outputs */ NULL);
+        atu::RunProtoCompiler(filename, cpp_out, &cli, file);
 
     if (!result) {
       return result;

@@ -28,6 +28,8 @@
 // (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT OF THE USE
 // OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 
+#include <unordered_map>
+
 #include <Python.h>
 
 #include <google/protobuf/dynamic_message.h>
@@ -100,7 +102,9 @@ PyObject* New(PyTypeObject* type, PyObject* args, PyObject* kwargs) {
       NewMessageFactory(type, reinterpret_cast<PyDescriptorPool*>(pool)));
 }
 
-static void Dealloc(PyMessageFactory* self) {
+static void Dealloc(PyObject* pself) {
+  PyMessageFactory* self = reinterpret_cast<PyMessageFactory*>(pself);
+
   // TODO(amauryfa): When the MessageFactory is not created from the
   // DescriptorPool this reference should be owned, not borrowed.
   // Py_CLEAR(self->pool);
@@ -111,7 +115,7 @@ static void Dealloc(PyMessageFactory* self) {
   }
   delete self->classes_by_descriptor;
   delete self->message_factory;
-  Py_TYPE(self)->tp_free(reinterpret_cast<PyObject*>(self));
+  Py_TYPE(self)->tp_free(pself);
 }
 
 // Add a message class to our database.
@@ -135,7 +139,7 @@ CMessageClass* GetOrCreateMessageClass(PyMessageFactory* self,
   // This is the same implementation as MessageFactory.GetPrototype().
 
   // Do not create a MessageClass that already exists.
-  hash_map<const Descriptor*, CMessageClass*>::iterator it =
+  std::unordered_map<const Descriptor*, CMessageClass*>::iterator it =
       self->classes_by_descriptor->find(descriptor);
   if (it != self->classes_by_descriptor->end()) {
     Py_INCREF(it->second);
@@ -156,7 +160,7 @@ CMessageClass* GetOrCreateMessageClass(PyMessageFactory* self,
     return NULL;
   }
   ScopedPyObjectPtr message_class(PyObject_CallObject(
-      reinterpret_cast<PyObject*>(&CMessageClass_Type), args.get()));
+      reinterpret_cast<PyObject*>(CMessageClass_Type), args.get()));
   if (message_class == NULL) {
     return NULL;
   }
@@ -231,7 +235,7 @@ PyTypeObject PyMessageFactory_Type = {
     ".MessageFactory",                        // tp_name
     sizeof(PyMessageFactory),                 // tp_basicsize
     0,                                        // tp_itemsize
-    (destructor)message_factory::Dealloc,     // tp_dealloc
+    message_factory::Dealloc,                 // tp_dealloc
     0,                                        // tp_print
     0,                                        // tp_getattr
     0,                                        // tp_setattr

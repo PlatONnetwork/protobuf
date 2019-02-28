@@ -46,6 +46,7 @@
 #include <google/protobuf/wire_format.h>
 #include <google/protobuf/stubs/strutil.h>
 
+
 namespace google {
 namespace protobuf {
 namespace compiler {
@@ -66,11 +67,11 @@ void SetEnumVariables(const FieldDescriptor* descriptor,
   (*variables)["mutable_type"] =
       name_resolver->GetMutableClassName(descriptor->enum_type());
   (*variables)["default"] = ImmutableDefaultValue(descriptor, name_resolver);
-  (*variables)["default_number"] = SimpleItoa(
-      descriptor->default_value_enum()->number());
-  (*variables)["tag"] =
-      SimpleItoa(static_cast<int32>(internal::WireFormat::MakeTag(descriptor)));
-  (*variables)["tag_size"] = SimpleItoa(
+  (*variables)["default_number"] =
+      StrCat(descriptor->default_value_enum()->number());
+  (*variables)["tag"] = StrCat(
+      static_cast<int32>(internal::WireFormat::MakeTag(descriptor)));
+  (*variables)["tag_size"] = StrCat(
       internal::WireFormat::TagSize(descriptor->number(), GetType(descriptor)));
   // TODO(birdo): Add @deprecated javadoc when generating javadoc is supported
   // by the proto compiler
@@ -80,7 +81,7 @@ void SetEnumVariables(const FieldDescriptor* descriptor,
   // Use deprecated valueOf() method to be compatible with old generated code
   // for v2.5.0/v2.6.1.
   // TODO(xiaofeng): Use "forNumber" when we no longer support compatibility
-  // with v2.5.0/v2.6.1.
+  // with v2.5.0/v2.6.1, and remove the @SuppressWarnings annotations.
   (*variables)["for_number"] = "valueOf";
 
   if (SupportFieldPresence(descriptor->file())) {
@@ -199,6 +200,7 @@ GenerateMembers(io::Printer* printer) const {
   WriteFieldDocComment(printer, descriptor_);
   printer->Print(variables_,
     "$deprecation$public $type$ ${$get$capitalized_name$$}$() {\n"
+    "  @SuppressWarnings(\"deprecation\")\n"
     "  $type$ result = $type$.$for_number$($name$_);\n"
     "  return result == null ? $unknown$ : result;\n"
     "}\n");
@@ -237,6 +239,7 @@ GenerateBuilderMembers(io::Printer* printer) const {
   WriteFieldDocComment(printer, descriptor_);
   printer->Print(variables_,
     "$deprecation$public $type$ ${$get$capitalized_name$$}$() {\n"
+    "  @SuppressWarnings(\"deprecation\")\n"
     "  $type$ result = $type$.$for_number$($name$_);\n"
     "  return result == null ? $unknown$ : result;\n"
     "}\n");
@@ -320,6 +323,7 @@ GenerateParsingCode(io::Printer* printer) const {
   } else {
     printer->Print(variables_,
       "int rawValue = input.readEnum();\n"
+    "  @SuppressWarnings(\"deprecation\")\n"
       "$type$ value = $type$.$for_number$(rawValue);\n"
       "if (value == null) {\n"
       "  unknownFields.mergeVarintField($number$, rawValue);\n"
@@ -355,7 +359,7 @@ GenerateSerializedSizeCode(io::Printer* printer) const {
 void ImmutableEnumFieldGenerator::
 GenerateEqualsCode(io::Printer* printer) const {
   printer->Print(variables_,
-    "result = result && $name$_ == other.$name$_;\n");
+    "if ($name$_ != other.$name$_) return false;\n");
 }
 
 void ImmutableEnumFieldGenerator::
@@ -412,6 +416,7 @@ GenerateMembers(io::Printer* printer) const {
   printer->Print(variables_,
     "$deprecation$public $type$ ${$get$capitalized_name$$}$() {\n"
     "  if ($has_oneof_case_message$) {\n"
+    "    @SuppressWarnings(\"deprecation\")\n"
     "    $type$ result = $type$.$for_number$(\n"
     "        (java.lang.Integer) $oneof_name$_);\n"
     "    return result == null ? $unknown$ : result;\n"
@@ -456,6 +461,7 @@ GenerateBuilderMembers(io::Printer* printer) const {
   printer->Print(variables_,
     "$deprecation$public $type$ ${$get$capitalized_name$$}$() {\n"
     "  if ($has_oneof_case_message$) {\n"
+    "    @SuppressWarnings(\"deprecation\")\n"
     "    $type$ result = $type$.$for_number$(\n"
     "        (java.lang.Integer) $oneof_name$_);\n"
     "    return result == null ? $unknown$ : result;\n"
@@ -517,6 +523,7 @@ GenerateParsingCode(io::Printer* printer) const {
   } else {
     printer->Print(variables_,
       "int rawValue = input.readEnum();\n"
+      "@SuppressWarnings(\"deprecation\")\n"
       "$type$ value = $type$.$for_number$(rawValue);\n"
       "if (value == null) {\n"
       "  unknownFields.mergeVarintField($number$, rawValue);\n"
@@ -548,12 +555,12 @@ void ImmutableEnumOneofFieldGenerator::
 GenerateEqualsCode(io::Printer* printer) const {
   if (SupportUnknownEnumValue(descriptor_->file())) {
     printer->Print(variables_,
-      "result = result && get$capitalized_name$Value()\n"
-      "    == other.get$capitalized_name$Value();\n");
+      "if (get$capitalized_name$Value()\n"
+      "    != other.get$capitalized_name$Value()) return false;\n");
   } else {
     printer->Print(variables_,
-      "result = result && get$capitalized_name$()\n"
-      "    .equals(other.get$capitalized_name$());\n");
+      "if (!get$capitalized_name$()\n"
+      "    .equals(other.get$capitalized_name$())) return false;\n");
   }
 }
 
@@ -626,6 +633,7 @@ GenerateMembers(io::Printer* printer) const {
     "        new com.google.protobuf.Internal.ListAdapter.Converter<\n"
     "            java.lang.Integer, $type$>() {\n"
     "          public $type$ convert(java.lang.Integer from) {\n"
+    "            @SuppressWarnings(\"deprecation\")\n"
     "            $type$ result = $type$.$for_number$(from);\n"
     "            return result == null ? $unknown$ : result;\n"
     "          }\n"
@@ -667,8 +675,7 @@ GenerateMembers(io::Printer* printer) const {
     printer->Annotate("{", "}", descriptor_);
   }
 
-  if (descriptor_->is_packed() &&
-      context_->HasGeneratedMethods(descriptor_->containing_type())) {
+  if (descriptor_->is_packed()) {
     printer->Print(variables_,
       "private int $name$MemoizedSerializedSize;\n");
   }
@@ -879,6 +886,7 @@ GenerateParsingCode(io::Printer* printer) const {
   } else {
     printer->Print(variables_,
       "int rawValue = input.readEnum();\n"
+      "@SuppressWarnings(\"deprecation\")\n"
       "$type$ value = $type$.$for_number$(rawValue);\n"
       "if (value == null) {\n"
       "  unknownFields.mergeVarintField($number$, rawValue);\n"
@@ -976,7 +984,7 @@ GenerateSerializedSizeCode(io::Printer* printer) const {
 void RepeatedImmutableEnumFieldGenerator::
 GenerateEqualsCode(io::Printer* printer) const {
   printer->Print(variables_,
-    "result = result && $name$_.equals(other.$name$_);\n");
+    "if (!$name$_.equals(other.$name$_)) return false;\n");
 }
 
 void RepeatedImmutableEnumFieldGenerator::

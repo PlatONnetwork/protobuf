@@ -30,8 +30,9 @@
 
 #include <google/protobuf/generated_message_table_driven.h>
 
-#include <google/protobuf/stubs/type_traits.h>
+#include <type_traits>
 
+#include <google/protobuf/stubs/casts.h>
 #include <google/protobuf/generated_message_table_driven_lite.h>
 #include <google/protobuf/io/zero_copy_stream_impl_lite.h>
 #include <google/protobuf/metadata.h>
@@ -52,6 +53,10 @@ UnknownFieldSet* MutableUnknownFields(MessageLite* msg, int64 arena_offset) {
 }
 
 struct UnknownFieldHandler {
+  // TODO(mvels): consider renaming UnknownFieldHandler to (TableDrivenTraits?),
+  // and conflating InternalMetaData into it, simplifying the template.
+  static constexpr bool IsLite() { return false; }
+
   static bool Skip(MessageLite* msg, const ParseTable& table,
                    io::CodedInputStream* input,
                    int tag) {

@@ -34,11 +34,8 @@
 
 #include <google/protobuf/compiler/importer.h>
 
-#include <google/protobuf/stubs/hash.h>
 #include <memory>
-#ifndef _SHARED_PTR_H
-#include <google/protobuf/stubs/shared_ptr.h>
-#endif
+#include <unordered_map>
 
 #include <google/protobuf/stubs/logging.h>
 #include <google/protobuf/stubs/common.h>
@@ -115,7 +112,7 @@ class MockSourceTree : public SourceTree {
   }
 
  private:
-  hash_map<string, const char*> files_;
+  std::unordered_map<string, const char*> files_;
 };
 
 // ===================================================================
@@ -268,7 +265,7 @@ class DiskSourceTreeTest : public testing::Test {
 
   void ExpectFileContents(const string& filename,
                           const char* expected_contents) {
-    google::protobuf::scoped_ptr<io::ZeroCopyInputStream> input(source_tree_.Open(filename));
+    std::unique_ptr<io::ZeroCopyInputStream> input(source_tree_.Open(filename));
 
     ASSERT_FALSE(input == NULL);
 
@@ -285,7 +282,7 @@ class DiskSourceTreeTest : public testing::Test {
 
   void ExpectCannotOpenFile(const string& filename,
                             const string& error_message) {
-    google::protobuf::scoped_ptr<io::ZeroCopyInputStream> input(source_tree_.Open(filename));
+    std::unique_ptr<io::ZeroCopyInputStream> input(source_tree_.Open(filename));
     EXPECT_TRUE(input == NULL);
     EXPECT_EQ(error_message, source_tree_.GetLastErrorMessage());
   }
